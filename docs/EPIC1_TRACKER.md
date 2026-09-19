@@ -52,7 +52,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 ```json
 {
   "id": "epic1.task2",
-  "behavior": "SQLAlchemy models exist for users, restaurants, menus/items, orders, deliveries, drivers, payments, ratings, and promotions, matching the seven-state order lifecycle in AGENTS_DZO.md section 1, with a first Alembic migration applied",
+  "behavior": "SQLAlchemy models exist for the finalized core schema (users, driver_profiles, restaurant_staff, restaurants, menu_items, menu_item_modifiers/modifier_options, addresses, orders, order_items, driver_locations, payments, payouts, driver_subscriptions, ratings, promotions), matching the seven-state order lifecycle in AGENTS_DZO.md section 1, with a first Alembic migration applied",
   "verification": "alembic upgrade head runs clean against a fresh DB; unit tests confirm each model's constraints (uniqueness, FKs, required fields)",
   "state": "todo",
   "evidence": null
@@ -61,23 +61,49 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 
 **Files (expected):** `app/models/*.py` (per-domain files, replacing the placeholder in `app/models/base.py`), `alembic/versions/*`
 
+**Finalized schema** (brainstormed 2026-09-19):
+
+| Table | Notes |
+|---|---|
+| `users` | One shared table for all roles (customer/driver/merchant/admin), not per-role tables — a person can be both customer and driver |
+| `driver_profiles` | 1:1 with `users` where role=driver — vehicle info, background-check status, online/offline |
+| `restaurant_staff` | Join table: `users` ↔ `restaurants`, with owner/manager/staff role |
+| `restaurants` | name, address, status, timezone |
+| `menu_items` | restaurant_id, name, price, description, photo_url, is_available (the "86" toggle) |
+| `menu_item_modifiers` / `modifier_options` | Customizable items (size, add-ons) |
+| `addresses` | Reusable customer delivery addresses |
+| `orders` | customer_id, restaurant_id, driver_id (nullable), status, prep_time_estimate, ready_time, subtotal, tip, promo_id (nullable), delivery_address_id, **plus delivery fields folded in directly**: `claimed_at`, `picked_up_at`, `delivered_at`, `proof_of_delivery` |
+| `order_items` | order_id, menu_item_id, quantity, selected modifiers, price_at_order_time |
+| `driver_locations` | Last-known location (or a ping history table if a location trail is wanted later) |
+| `payments` | One row per order, linked to processor's payment intent, split into platform/restaurant/driver amounts |
+| `payouts` | Restaurant and driver payout batches |
+| `driver_subscriptions` | Tracks the $99/month plan and 30-day trial window (roadmap §8) |
+| `ratings` | order_id, rater_id, ratee_id, rater_role, score, comment — one table covering all three rating directions (customer↔restaurant, customer↔driver, restaurant↔driver) rather than three separate tables |
+| `promotions` | code, discount type/amount, valid dates, usage limits |
+
+**Explicitly decided against, for now:**
+- No `order_status_events` audit table — `orders.status` alone is the source of truth. Revisit if the "no state transition skipped or faked" hard constraint (`AGENTS_DZO.md` §3) turns out to need a real audit trail (e.g. for HQ analytics or dispute resolution).
+- No separate `deliveries` table — delivery fields live directly on `orders` since every delivery maps 1:1 to a Food order at launch. Revisit and extract into its own table if/when DZO Ride needs to serve non-Food logistics (roadmap Epic 9).
+
 **TDD checklist:**
 - [ ] Write failing tests for each model's core constraints before implementing
-- [ ] `User` model (role: customer/driver/merchant/admin per epic1.task3's needs)
-- [ ] `Restaurant`, `MenuItem` models
-- [ ] `Order` model with status field covering all seven lifecycle states (`AGENTS_DZO.md` §1)
-- [ ] `Delivery`, `Driver` models
-- [ ] `Payment` model (references only, no raw card data — `AGENTS_DZO.md` §3)
+- [ ] `User`, `DriverProfile`, `RestaurantStaff` models
+- [ ] `Restaurant`, `MenuItem`, `MenuItemModifier`/`ModifierOption` models
+- [ ] `Address` model
+- [ ] `Order` model with status field covering all seven lifecycle states (`AGENTS_DZO.md` §1) and delivery fields folded in
+- [ ] `OrderItem` model
+- [ ] `DriverLocation` model
+- [ ] `Payment`, `Payout`, `DriverSubscription` models (references only, no raw card data — `AGENTS_DZO.md` §3)
 - [ ] `Rating`, `Promotion` models
 - [ ] First Alembic migration generated and applied
 
 **Acceptance criteria:**
 - [ ] `alembic upgrade head` runs clean on a fresh DB
-- [ ] All nine model groups above exist with tests passing
+- [ ] All model groups in the finalized schema table above exist with tests passing
 - [ ] Order status field can represent all seven lifecycle states, no shortcuts
 - [ ] `make check` passes
 
-**Deviations & open items:** None yet.
+**Deviations & open items:** Delivery fields were folded into `orders` instead of a separate `deliveries` table, and no `order_status_events` audit table was built — both explicit scope decisions made during brainstorming (2026-09-19), not oversights. See "Explicitly decided against" above.
 
 ---
 
