@@ -1,14 +1,13 @@
-# Placeholder — real ORM models go here (or in per-domain files: user.py, restaurant.py,
-# menu.py, order.py, delivery.py, driver.py, payment.py, rating.py, promotion.py), per
-# the core DB schema outlined in docs/DZO_TECH_ROADMAP.md Epic 1.
-#
-# Example shape once schema work starts:
-#
-# from sqlalchemy import String
-# from sqlalchemy.orm import Mapped, mapped_column
-# from app.core.database import Base
-#
-# class User(Base):
-#     __tablename__ = "users"
-#     id: Mapped[int] = mapped_column(primary_key=True)
-#     email: Mapped[str] = mapped_column(String, unique=True, index=True)
+from datetime import datetime
+
+from sqlalchemy import DateTime, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+
+class TimestampMixin:
+    """created_at/updated_at columns shared by every model that needs them."""
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
