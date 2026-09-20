@@ -5,9 +5,7 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from app.core.config import get_settings
 from app.core.database import Base
-
-# Import model modules here so Alembic's autogenerate can see them, e.g.:
-# from app.models import user, restaurant, order  # noqa: F401
+from app.models import *  # noqa: F401, F403 — registers all models on Base.metadata
 
 config = context.config
 
