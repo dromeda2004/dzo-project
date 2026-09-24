@@ -13,7 +13,7 @@
 |---|---|---|
 | epic1.task1 — Repo skeleton & tooling | done | commit `65982d7` |
 | epic1.task2 — Core DB schema | done | commit `0565bfe` |
-| epic1.task3 — Auth & role-based access | todo | — |
+| epic1.task3 — Auth & role-based access | done | commit `c895152` |
 | epic1.task4 — API layer conventions & integration scaffolding | todo | — |
 | epic1.task5 — CI/CD pipeline | todo | — |
 | epic1.task6 — Cloud infra & environments (dev/staging/prod) | blocked | blocked on cloud provider decision, see `DZO_TECH_ROADMAP.md` §11 |
@@ -119,25 +119,30 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "id": "epic1.task3",
   "behavior": "Users can authenticate and requests are authorized by role (customer, driver, merchant, internal admin/staff)",
   "verification": "unit + integration tests covering login, token validation, and role-gated endpoint access",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `c895152`"
 }
 ```
 
-**Files (expected):** `app/core/auth.py` (or similar), `app/schemas/auth.py`, tests under `tests/`
+**Files:** `app/core/security.py` (bcrypt hashing), `app/core/auth.py` (JWT issuance/validation, `Role` enum, `get_current_user`, `require_role`), `app/schemas/auth.py`, `app/routers/auth.py` (`POST /auth/login`, `GET /auth/me`), `app/routers/admin.py` (`GET /admin/ping` — minimal role-gated example), `tests/test_auth.py`, `tests/conftest.py` (`client` fixture)
+
+**Design decision:** Roles are derived from a user's existing data rather than stored as a single column — `is_admin` flag, presence of `driver_profile`, presence of `restaurant_staff_memberships` — consistent with epic1.task2's decision that one person can hold more than one role (e.g. a driver who also orders as a customer). `user_roles(user)` in `app/core/auth.py` computes the set of roles for a given request.
 
 **TDD checklist:**
-- [ ] Depends on `User` model from epic1.task2
-- [ ] Session/token issuance and validation
-- [ ] Role-based access control dependency for route handlers
-- [ ] Tests for each of the four roles' access boundaries
+- [x] Depends on `User` model from epic1.task2
+- [x] Session/token issuance and validation
+- [x] Role-based access control dependency for route handlers
+- [x] Tests for each of the four roles' access boundaries
 
 **Acceptance criteria:**
-- [ ] A user can authenticate and receive a valid session/token
-- [ ] Role-gated endpoints reject requests from the wrong role
-- [ ] `make check` passes
+- [x] A user can authenticate and receive a valid session/token — `POST /auth/login`
+- [x] Role-gated endpoints reject requests from the wrong role — `GET /admin/ping` returns 403 for non-admins, 200 for admins; verified via `tests/test_auth.py` and a live `curl` smoke test against a running server
+- [x] `make check` passes
 
-**Deviations & open items:** None yet.
+**Deviations & open items:**
+- No registration/user-creation endpoint exists yet — out of scope for this task, which assumes users already exist. Tests seed users directly via `db_session`. Worth revisiting when `epic1.task4` designs the general API layer, or whenever DZO Food/Biz need customer/merchant sign-up.
+- Token expiry is a flat 24h with no refresh-token flow — reasonable for an MVP-stage single access token, revisit if session length becomes a real product concern.
+- `SECRET_KEY` defaults to an intentionally obvious placeholder (`dev-insecure-secret-change-in-production`) in `app/core/config.py` and `.env.example` — must be overridden per environment before any real deployment (ties into `epic1.task6`/`epic1.task8` launch prep).
 
 ---
 
