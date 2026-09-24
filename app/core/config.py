@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://dzo:dzo@localhost:5432/dzo"
     alembic_database_url: str = "postgresql+psycopg2://dzo:dzo@localhost:5432/dzo"
 
+    # MUST be overridden via .env in any shared environment — this default is
+    # intentionally obvious so it's never mistaken for a real secret.
+    secret_key: str = "dev-insecure-secret-change-in-production"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24
+
 
 @lru_cache
 def get_settings() -> Settings:
