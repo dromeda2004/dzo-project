@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from app.schemas.base import ORMBase
+
 
 class LoginRequest(BaseModel):
     email: str
@@ -11,10 +13,8 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
-class UserOut(BaseModel):
+class UserOut(ORMBase):
     id: int
     email: str
     full_name: str
     is_admin: bool
-
-    model_config = {"from_attributes": True}
