@@ -14,7 +14,7 @@
 | epic1.task1 — Repo skeleton & tooling | done | commit `65982d7` |
 | epic1.task2 — Core DB schema | done | commit `0565bfe` |
 | epic1.task3 — Auth & role-based access | done | commit `c895152` |
-| epic1.task4 — API layer conventions & integration scaffolding | todo | — |
+| epic1.task4 — API layer conventions & integration scaffolding | done | commit `1993dbb` |
 | epic1.task5 — CI/CD pipeline | todo | — |
 | epic1.task6 — Cloud infra & environments (dev/staging/prod) | blocked | blocked on cloud provider decision, see `DZO_TECH_ROADMAP.md` §11 |
 | epic1.task7 — Observability (OpenTelemetry) | todo | — |
@@ -153,23 +153,28 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "id": "epic1.task4",
   "behavior": "Consistent API conventions (request/response schemas, error handling, versioning) are established, with scaffolding in place for third-party integrations (payments, maps, push)",
   "verification": "a second real endpoint (beyond /health) follows the convention and has passing tests",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `1993dbb`"
 }
 ```
 
-**Files (expected):** `app/schemas/*.py`, `app/routers/*.py`, `app/core/config.py` (integration credentials via env)
+**Files:** `app/schemas/base.py` (`ORMBase`), `app/schemas/errors.py` (`ErrorDetail`/`ErrorResponse`), `app/core/error_handlers.py` (`register_exception_handlers`), `app/core/config.py` (integration key stubs), `docs/API_CONVENTIONS.md`, `tests/test_error_handlers.py`
+
+**Design decision:** Rather than a parallel custom exception class, `register_exception_handlers(app)` intercepts FastAPI/Starlette's own `HTTPException` and `RequestValidationError` and envelopes them as `{"error": {"code", "message", "fields"?}}`. Every existing and future route that just does `raise HTTPException(...)` gets the convention for free — see `docs/API_CONVENTIONS.md` for the full shape and Pydantic naming conventions.
 
 **TDD checklist:**
-- [ ] Standard error-response schema
-- [ ] Pydantic request/response schema conventions documented
-- [ ] Config scaffolding for Stripe/maps/FCM keys (values pending stack confirmation in `DZO_TECH_ROADMAP.md` §5)
+- [x] Standard error-response schema
+- [x] Pydantic request/response schema conventions documented
+- [x] Config scaffolding for Stripe/maps/FCM keys (values pending stack confirmation in `DZO_TECH_ROADMAP.md` §5)
 
 **Acceptance criteria:**
-- [ ] At least one non-health endpoint demonstrates the convention end to end
-- [ ] `make check` passes
+- [x] At least one non-health endpoint demonstrates the convention end to end — `/auth/*` and `/admin/ping` (existing from epic1.task3) now return the standard error envelope; `UserOut` retrofitted onto `ORMBase`. Verified via `tests/test_error_handlers.py` and a live smoke test against a running server.
+- [x] `make check` passes
 
-**Deviations & open items:** None yet.
+**Deviations & open items:**
+- No new demo endpoint was built — the existing auth/admin routes from epic1.task3 were retrofitted onto the new conventions instead, since building a throwaway endpoint just to prove the convention would be dead code.
+- Versioning: documented as "none yet" in `docs/API_CONVENTIONS.md` rather than implemented — no external consumers exist yet to version against. Revisit before DZO Biz is sold standalone or DZO Ride serves non-Food logistics (roadmap Epic 9).
+- Integration config fields (`stripe_secret_key`, `google_maps_api_key`, `fcm_server_key`) are unused stubs — real values and actual SDK wiring wait for roadmap Epic 5 (payments) / Epic 6 (DZO Ride) once the provider decisions in `DZO_TECH_ROADMAP.md` §5 are made.
 
 ---
 
