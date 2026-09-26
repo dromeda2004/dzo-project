@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
 
+    # Third-party integration credentials — provider not yet confirmed for any
+    # of these (see DZO_TECH_ROADMAP.md §5). Unused stubs until roadmap Epic 5
+    # (payments) / Epic 6 (DZO Ride) wire up a real integration; optional so
+    # their absence never breaks local dev or tests.
+    stripe_secret_key: str | None = None
+    google_maps_api_key: str | None = None
+    fcm_server_key: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
