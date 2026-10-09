@@ -15,7 +15,7 @@
 | epic1.task2 — Core DB schema | done | commit `0565bfe` |
 | epic1.task3 — Auth & role-based access | done | commit `c895152` |
 | epic1.task4 — API layer conventions & integration scaffolding | done | commit `1993dbb` |
-| epic1.task5 — CI/CD pipeline | todo | — |
+| epic1.task5 — CI/CD pipeline | active | — |
 | epic1.task6 — Cloud infra & environments (dev/staging/prod) | blocked | blocked on cloud provider decision, see `DZO_TECH_ROADMAP.md` §11 |
 | epic1.task7 — Observability (OpenTelemetry) | todo | — |
 
@@ -185,7 +185,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "id": "epic1.task5",
   "behavior": "make check (lint + test) runs automatically on every push/PR, blocking merge on failure",
   "verification": "a deliberately failing PR is blocked by CI; a passing PR is allowed to merge",
-  "state": "todo",
+  "state": "active",
   "evidence": null
 }
 ```
