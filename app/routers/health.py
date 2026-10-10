@@ -1,3 +1,4 @@
+import os  # deliberate ruff F401 failure to verify CI blocks merge
 from fastapi import APIRouter
 
 router = APIRouter(tags=["health"])
