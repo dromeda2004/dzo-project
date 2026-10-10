@@ -11,11 +11,11 @@
 
 | Task | Status | Evidence |
 |---|---|---|
-| epic1.task1 — Repo skeleton & tooling | done | commit `65982d7` |
-| epic1.task2 — Core DB schema | done | commit `0565bfe` |
-| epic1.task3 — Auth & role-based access | done | commit `c895152` |
-| epic1.task4 — API layer conventions & integration scaffolding | done | commit `1993dbb` |
-| epic1.task5 — CI/CD pipeline | active | — |
+| epic1.task1 — Repo skeleton & tooling | done | commit `31f0952` |
+| epic1.task2 — Core DB schema | done | commit `7a433e4` |
+| epic1.task3 — Auth & role-based access | done | commit `76ef424` |
+| epic1.task4 — API layer conventions & integration scaffolding | done | commit `190d985` |
+| epic1.task5 — CI/CD pipeline | done | commit `002fc33`, PR #1 |
 | epic1.task6 — Cloud infra & environments (dev/staging/prod) | blocked | blocked on cloud provider decision, see `DZO_TECH_ROADMAP.md` §11 |
 | epic1.task7 — Observability (OpenTelemetry) | todo | — |
 
@@ -31,7 +31,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "FastAPI app boots, has a working /health endpoint, and the repo has make setup/test/lint/check wired up",
   "verification": "manual: make run + curl /health; automated: tests/test_health.py",
   "state": "done",
-  "evidence": "commit 65982d7"
+  "evidence": "commit 31f0952"
 }
 ```
 
@@ -55,7 +55,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "SQLAlchemy models exist for the finalized core schema (users, driver_profiles, restaurant_staff, restaurants, menu_items, menu_item_modifiers/modifier_options, addresses, orders, order_items, driver_locations, payments, payouts, driver_subscriptions, ratings, promotions), matching the seven-state order lifecycle in AGENTS_DZO.md section 1, with a first Alembic migration applied",
   "verification": "alembic upgrade head runs clean against a fresh DB; unit tests confirm each model's constraints (uniqueness, FKs, required fields)",
   "state": "done",
-  "evidence": "commits 0565bfe (models + migration), 0a18e9c (tests)"
+  "evidence": "commits 7a433e4 (models + migration), 34ef85e (tests)"
 }
 ```
 
@@ -120,7 +120,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "Users can authenticate and requests are authorized by role (customer, driver, merchant, internal admin/staff)",
   "verification": "unit + integration tests covering login, token validation, and role-gated endpoint access",
   "state": "done",
-  "evidence": "commit `c895152`"
+  "evidence": "commit `76ef424`"
 }
 ```
 
@@ -154,7 +154,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "Consistent API conventions (request/response schemas, error handling, versioning) are established, with scaffolding in place for third-party integrations (payments, maps, push)",
   "verification": "a second real endpoint (beyond /health) follows the convention and has passing tests",
   "state": "done",
-  "evidence": "commit `1993dbb`"
+  "evidence": "commit `190d985`"
 }
 ```
 
@@ -185,19 +185,25 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "id": "epic1.task5",
   "behavior": "make check (lint + test) runs automatically on every push/PR, blocking merge on failure",
   "verification": "a deliberately failing PR is blocked by CI; a passing PR is allowed to merge",
-  "state": "active",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `002fc33`; CI run 38071251136 (green on master); PR #1 (blocked, closed unmerged)"
 }
 ```
 
-**Files (expected):** `.github/workflows/*.yml` or equivalent, depending on where the repo ends up hosted
+**Files:** `.github/workflows/ci.yml`; branch protection on `master` (GitHub repo settings, not in the repo)
+
+**Design decision:** Two GitHub Actions jobs on every push and PR. `make check` runs against a `postgres:16` service container after `alembic upgrade head`, so a broken migration fails CI too. `secret scan (gitleaks)` runs gitleaks v8.30.1 (pinned Docker image) over full git history. Branch protection on `master` requires both checks, requires changes to land via PR (0 approvals, since this is a solo repo for now), and applies to admins, so nobody can push straight to `master` or bypass a red check.
 
 **Acceptance criteria:**
-- [ ] CI runs `make check` on every push
-- [ ] Failing checks block merge
-- [ ] Secret scanning included per `AGENTS_DZO.md` §11 Level 1
+- [x] CI runs `make check` on every push — first run 38071251136 on `002fc33` passed both jobs
+- [x] Failing checks block merge — PR #1 added an unused import; `make check` failed on ruff F401 and GitHub reported `mergeStateStatus: BLOCKED`. Closed unmerged, branch deleted. The passing half of the verification is the PR that merged this tracker update.
+- [x] Secret scanning included per `AGENTS_DZO.md` §11 Level 1 — gitleaks job; full history was clean (11 commits) before it was enabled, so no allowlist was needed
 
-**Deviations & open items:** None yet.
+**Deviations & open items:**
+- Secret scanning runs only in CI, not in `make lint` as `AGENTS_DZO.md` §11 Level 1 suggests — gitleaks isn't a Python package, and adding it to `make lint` would break `make check` for anyone without the binary. Revisit with a pre-commit hook if local scanning becomes worthwhile.
+- No CD (deployment) step — nothing to deploy to until epic1.task6's cloud provider decision is made. Add a deploy job then.
+- Pushing changes under `.github/workflows/` needs a GitHub token with the `workflow` scope (`gh auth refresh -s workflow`); a plain `repo`-scoped token is rejected.
+- The evidence hashes for task1–task4 above pointed at commits that no longer exist (history was rewritten at some point) and were corrected to the current `master` hashes in this update.
 
 ---
 
@@ -243,10 +249,10 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 
 ## Epic 1 done when
 
-- [ ] Core DB schema (epic1.task2) fully migrated and tested
-- [ ] Auth & role-based access (epic1.task3) working for all four roles
-- [ ] API conventions and integration scaffolding (epic1.task4) established
-- [ ] CI/CD (epic1.task5) enforcing `make check` on every change
+- [x] Core DB schema (epic1.task2) fully migrated and tested
+- [x] Auth & role-based access (epic1.task3) working for all four roles
+- [x] API conventions and integration scaffolding (epic1.task4) established
+- [x] CI/CD (epic1.task5) enforcing `make check` on every change
 - [ ] Dev environment (epic1.task6) live and reachable
 - [ ] Observability (epic1.task7) producing traces
 - [ ] Epic 3 (DZO Biz) can start building real domain logic against this backend
