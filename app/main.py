@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 
 from app.core.config import get_settings
+from app.core.database import engine
 from app.core.error_handlers import register_exception_handlers
+from app.core.telemetry import setup_telemetry
 from app.routers import admin, auth, health
 
 settings = get_settings()
@@ -14,6 +16,7 @@ app = FastAPI(
 )
 
 register_exception_handlers(app)
+tracer_provider = setup_telemetry(app, engine, settings)
 
 app.include_router(health.router)
 app.include_router(auth.router)

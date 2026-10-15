@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     google_maps_api_key: str | None = None
     fcm_server_key: str | None = None
 
+    # OpenTelemetry tracing (see app/core/telemetry.py). Base URL of an OTLP/HTTP
+    # collector, e.g. http://localhost:4318 for the local Jaeger in
+    # docker-compose.yml; unset means spans are created but never exported.
+    otel_service_name: str = "dzo-backend"
+    otel_exporter_otlp_endpoint: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
