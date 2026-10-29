@@ -18,6 +18,7 @@
 | epic1.task5 — CI/CD pipeline | done | commit `8c483d4`, PR #1 |
 | epic1.task6 — Cloud infra & environments (dev/staging/prod) | blocked | blocked on cloud provider decision, see `DZO_TECH_ROADMAP.md` §11 |
 | epic1.task7 — Observability (OpenTelemetry) | done | commit `7dc25b7` |
+| epic1.task8 — Dependency lock file | done | commit `012cdda` |
 
 WIP = 1: no task should be marked `active` until it's the single thing actually being worked on. Only one row above may be `active` at any time.
 
@@ -142,7 +143,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 **Deviations & open items:**
 - No registration/user-creation endpoint exists yet — out of scope for this task, which assumes users already exist. Tests seed users directly via `db_session`. Worth revisiting when `epic1.task4` designs the general API layer, or whenever DZO Food/Biz need customer/merchant sign-up.
 - Token expiry is a flat 24h with no refresh-token flow — reasonable for an MVP-stage single access token, revisit if session length becomes a real product concern.
-- `SECRET_KEY` defaults to an intentionally obvious placeholder (`dev-insecure-secret-change-in-production`) in `app/core/config.py` and `.env.example` — must be overridden per environment before any real deployment (ties into `epic1.task6`/`epic1.task8` launch prep).
+- `SECRET_KEY` defaults to an intentionally obvious placeholder (`dev-insecure-secret-change-in-production`) in `app/core/config.py` and `.env.example` — must be overridden per environment before any real deployment (ties into `epic1.task6` and roadmap Epic 8 launch prep).
 
 ---
 
@@ -251,9 +252,41 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 - No real tracing backend yet. Local Jaeger stands in until the cloud provider is chosen (epic1.task6).
 - The tests' DB fixture uses its own NullPool engine (see epic1.task2 deviations), which isn't instrumented, so SQL spans are tested by querying the app's real engine directly rather than via an HTTP request in tests. The manual Jaeger check covers the request→query parent/child link end to end.
 - SQLAlchemy is now capped at `<2.1` in `pyproject.toml`. The first CI run on this task failed because a fresh install pulled SQLAlchemy 2.1.4, while `opentelemetry-instrumentation-sqlalchemy` 0.66b1 only supports `<2.1` and silently skips instrumentation outside that range: no error, just no DB spans. `test_query_on_app_engine_produces_db_span` caught it. Lift the cap once the instrumentor supports 2.1.
-- Open item: there's no dependency lock file, so CI (and any future deploy) installs the newest versions allowed by `pyproject.toml` while local venvs keep whatever they were built with. That's how the SQLAlchemy 2.1 drift above went unnoticed locally. Worth adding a lock (e.g. `uv lock` or pip-tools) as its own small task, before epic1.task6 builds deploy images.
+- No dependency lock file meant CI installed the newest versions allowed by `pyproject.toml` while local venvs kept whatever they were built with. That's how the SQLAlchemy 2.1 drift above went unnoticed locally. Resolved by epic1.task8.
 - Jaeger v2 serves its query API under `/api/v3/...`; the v1 `/api/traces` path returns 404. Only relevant if scripting against Jaeger.
 - `README.md`'s "Layout" and "Status" sections are stale (they predate the schema, auth, and CI work). Not touched here; worth a separate docs pass.
+
+---
+
+## epic1.task8 — Dependency lock file
+
+```json
+{
+  "id": "epic1.task8",
+  "behavior": "Every environment (local, CI, future deploy images) installs the exact same dependency versions, and a pyproject.toml change without an updated lock fails CI",
+  "verification": "CI installs via uv sync --locked and passes; uv sync --locked fails locally when pyproject.toml is edited without re-locking",
+  "state": "done",
+  "evidence": "commit `012cdda`"
+}
+```
+
+**Files:** `uv.lock` (new), `.github/workflows/ci.yml`, `Makefile` (`setup`, new `lock-upgrade`), `README.md`
+
+**Design decision:** Chose uv over pip-tools because `uv lock` produces one cross-platform lock. pip-compile resolves for the machine it runs on, so a lock built on Windows would be wrong for Linux CI. This project already has platform-specific dependencies: `uvicorn[standard]` pulls in `uvloop` on Linux/macOS and `colorama` on Windows, and both are in `uv.lock`. CI installs uv itself pinned (`uv==0.11.12`) and runs `uv sync --locked --extra dev`.
+
+Spun out of an open item in epic1.task7 (CI silently installed SQLAlchemy 2.1, which the OTel instrumentor doesn't support), and done before epic1.task6 so deploy images build from the lock.
+
+**Acceptance criteria:**
+- [x] `uv.lock` committed, covering all 69 packages for every platform; respects the `sqlalchemy<2.1` cap (resolves 2.0.55)
+- [x] CI installs from the lock: `uv sync --locked`, then `uv run` for migrations and `make check`
+- [x] Drift is caught: changing a dependency in `pyproject.toml` without `uv lock` makes `uv sync --locked` exit 1 with "The lockfile at `uv.lock` needs to be updated" (checked locally, then reverted)
+- [x] `make check` passes on the locked versions: ruff, black, mypy clean; 18 tests pass locally after rebuilding `.venv` with `uv sync --locked`
+- [x] gitleaks finds no secrets in `uv.lock` (its package hashes don't trip the scanner)
+
+**Deviations & open items:**
+- Locking pulled in newer patch versions than the old local venv had (e.g. `opentelemetry-sdk` 1.45.1 → 1.45.2, SQLAlchemy 2.0.54 → 2.0.55). All checks pass on them.
+- `make setup` now needs uv installed. The README links to its install docs.
+- Dependencies only move when someone runs `make lock-upgrade` (`uv lock --upgrade`). Nothing upgrades them automatically yet. Consider Dependabot or Renovate once there's a team to review the PRs, so security patches don't sit unapplied.
 
 ---
 
