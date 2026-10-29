@@ -20,6 +20,10 @@ make run                 # starts the API at http://localhost:8000
 
 Visit `http://localhost:8000/health` — should return `{"status": "ok"}`. Interactive API docs are at `http://localhost:8000/docs`.
 
+### Tracing (OpenTelemetry)
+
+`make db-up` also starts a local Jaeger. To send traces to it, set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` in `.env`, restart the API, make a request, and open `http://localhost:16686` (service `dzo-backend`). Each request shows up as a trace with its SQL queries as child spans. Leave the variable unset to turn export off — tests and CI run that way.
+
 ## Everyday commands
 
 ```bash

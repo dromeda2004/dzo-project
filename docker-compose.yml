@@ -11,5 +11,14 @@ services:
     volumes:
       - dzo_pg_data:/var/lib/postgresql/data
 
+  # Local trace viewer for epic1.task7. UI: http://localhost:16686
+  # The app sends traces here when OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318.
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    restart: unless-stopped
+    ports:
+      - "16686:16686" # UI
+      - "4318:4318" # OTLP over HTTP
+
 volumes:
   dzo_pg_data:
