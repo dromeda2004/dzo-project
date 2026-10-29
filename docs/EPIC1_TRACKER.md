@@ -17,7 +17,7 @@
 | epic1.task4 — API layer conventions & integration scaffolding | done | commit `876a42f` |
 | epic1.task5 — CI/CD pipeline | done | commit `8c483d4`, PR #1 |
 | epic1.task6 — Cloud infra & environments (dev/staging/prod) | blocked | blocked on cloud provider decision, see `DZO_TECH_ROADMAP.md` §11 |
-| epic1.task7 — Observability (OpenTelemetry) | todo | — |
+| epic1.task7 — Observability (OpenTelemetry) | done | commit `7dc25b7` |
 
 WIP = 1: no task should be marked `active` until it's the single thing actually being worked on. Only one row above may be `active` at any time.
 
@@ -233,18 +233,27 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "id": "epic1.task7",
   "behavior": "OpenTelemetry instrumentation is wired into the FastAPI app for traces/metrics/logs",
   "verification": "manual: a request produces a visible trace in whatever backend is configured",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `7dc25b7`; tests/test_telemetry.py; manual trace check in local Jaeger (2026-10-15)"
 }
 ```
 
-**Files (expected):** `app/core/telemetry.py` or similar, `app/main.py` (instrumentation hook)
+**Files:** `app/core/telemetry.py` (`setup_telemetry`, `build_tracer_provider`, `otlp_traces_endpoint`), `app/main.py` (hook), `app/core/config.py` (`otel_service_name`, `otel_exporter_otlp_endpoint`), `tests/test_telemetry.py`, `docker-compose.yml` (Jaeger), `.env.example`, `README.md`
+
+**Design decision:** Provider-neutral by construction. Traces go out over OTLP/HTTP, which every candidate cloud's tracing backend accepts, to whatever `OTEL_EXPORTER_OTLP_ENDPOINT` names. Unset means spans are created but never exported, so tests and CI need no collector. Once epic1.task6 picks a cloud, wiring it up should only take setting that variable (plus auth headers if the provider requires them). The tracer provider is passed to the instrumentors explicitly rather than set globally, so tests can attach an in-memory exporter to the app's real provider.
 
 **Acceptance criteria:**
-- [ ] Requests produce traces
-- [ ] `make check` passes
+- [x] Requests produce traces — `test_request_produces_server_span` (one SERVER span per request, with `http.route`/status and `service.name=dzo-backend`) and `test_query_on_app_engine_produces_db_span` (the app's real engine emits `db.system=postgresql` spans). Manual check: the API ran with `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` against the docker-compose Jaeger; `GET /health` showed up as a root span, and `POST /auth/login` as a root span with `connect` and `SELECT` child spans.
+- [x] `make check` passes — ruff, black, mypy clean; 18 tests pass
 
-**Deviations & open items:** Depends on where telemetry data is sent, likely coupled to the cloud provider decision (epic1.task6).
+**Deviations & open items:**
+- Traces only. The task's `behavior` line also mentions metrics and logs, but the acceptance criteria cover traces alone. Metrics (request rate, latency, DB pool) and trace-correlated logs (`trace_id` in log lines) are worth adding once there's a real backend to send them to, i.e. after epic1.task6.
+- No real tracing backend yet. Local Jaeger stands in until the cloud provider is chosen (epic1.task6).
+- The tests' DB fixture uses its own NullPool engine (see epic1.task2 deviations), which isn't instrumented, so SQL spans are tested by querying the app's real engine directly rather than via an HTTP request in tests. The manual Jaeger check covers the request→query parent/child link end to end.
+- SQLAlchemy is now capped at `<2.1` in `pyproject.toml`. The first CI run on this task failed because a fresh install pulled SQLAlchemy 2.1.4, while `opentelemetry-instrumentation-sqlalchemy` 0.66b1 only supports `<2.1` and silently skips instrumentation outside that range: no error, just no DB spans. `test_query_on_app_engine_produces_db_span` caught it. Lift the cap once the instrumentor supports 2.1.
+- Open item: there's no dependency lock file, so CI (and any future deploy) installs the newest versions allowed by `pyproject.toml` while local venvs keep whatever they were built with. That's how the SQLAlchemy 2.1 drift above went unnoticed locally. Worth adding a lock (e.g. `uv lock` or pip-tools) as its own small task, before epic1.task6 builds deploy images.
+- Jaeger v2 serves its query API under `/api/v3/...`; the v1 `/api/traces` path returns 404. Only relevant if scripting against Jaeger.
+- `README.md`'s "Layout" and "Status" sections are stale (they predate the schema, auth, and CI work). Not touched here; worth a separate docs pass.
 
 ---
 
@@ -255,5 +264,5 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 - [x] API conventions and integration scaffolding (epic1.task4) established
 - [x] CI/CD (epic1.task5) enforcing `make check` on every change
 - [ ] Dev environment (epic1.task6) live and reachable
-- [ ] Observability (epic1.task7) producing traces
+- [x] Observability (epic1.task7) producing traces
 - [ ] Epic 3 (DZO Biz) can start building real domain logic against this backend
