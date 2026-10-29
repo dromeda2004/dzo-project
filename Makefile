@@ -1,9 +1,13 @@
-.PHONY: setup db-up db-down test lint check migrate run
+.PHONY: setup lock-upgrade db-up db-down test lint check migrate run
 
 setup:
-	python -m venv .venv
-	. .venv/bin/activate; pip install -e ".[dev]"
+	uv sync --locked --extra dev
 	@echo "Now: cp .env.example .env, then 'make db-up' and 'make migrate'"
+
+# Re-resolve uv.lock to the newest versions pyproject.toml allows. Commit the
+# updated uv.lock; CI installs exactly what it pins.
+lock-upgrade:
+	uv lock --upgrade
 
 db-up:
 	docker compose up -d
