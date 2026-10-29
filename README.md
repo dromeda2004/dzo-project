@@ -11,7 +11,7 @@ Python 3.11+, FastAPI, PostgreSQL, SQLAlchemy (async), Alembic.
 ```bash
 git clone <this repo>
 cd dzo-backend
-make setup              # creates .venv, installs deps
+make setup              # creates .venv, installs the exact versions in uv.lock (needs uv: https://docs.astral.sh/uv/)
 cp .env.example .env    # then edit if needed
 make db-up               # starts a local Postgres via Docker
 make migrate             # runs Alembic migrations (none yet — schema TBD)
@@ -31,6 +31,10 @@ make test    # run tests
 make lint    # ruff + black --check + mypy
 make check   # lint + test — required before any commit, per docs/AGENTS_DZO.md
 ```
+
+### Dependencies
+
+`uv.lock` pins every package (including indirect ones) for all platforms, and CI installs exactly what it pins. After editing dependencies in `pyproject.toml`, run `uv lock` and commit `uv.lock` too. CI fails if the two are out of sync. To pick up newer versions within the ranges `pyproject.toml` allows, run `make lock-upgrade`, then `make check`, then commit.
 
 ## Layout
 
