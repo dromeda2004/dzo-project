@@ -61,7 +61,7 @@ Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scop
 **Acceptance criteria:**
 - [ ] A dependency resolves the current user's `RestaurantStaff` row for the path's `restaurant_id`, returning 403 if there is none and 404 if the restaurant doesn't exist
 - [ ] Role ordering owner > manager > staff is enforced; proposed defaults: staff can run the order flow and toggle availability, managers can also edit the menu, only owners manage staff
-- [ ] Internal admins (`is_admin`) can act on any restaurant (needed for onboarding and for HQ later)
+- [ ] Internal admins (`is_admin`) can act on any restaurant (needed for onboarding and for HQ later). Keep this check in one place: HQ users will get different permission levels (feedback 2026-11-02, see roadmap Epic 2), so "is admin" will become "has this HQ permission"
 - [ ] `make check` passes
 
 ---

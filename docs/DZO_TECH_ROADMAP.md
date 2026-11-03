@@ -53,6 +53,7 @@ Charlie's list of what needs to be built maps cleanly onto epics. Each epic belo
 Goal: one place for Charlie and internal staff to see and manage everything happening across Food, Ride, and Biz.
 - Cross-product analytics and reporting: order volume, delivery time, cancellation rate, driver utilization, merchant performance, revenue — all three products in one dashboard
 - Cross-product user/account/permission management (customers, drivers, merchants, internal staff roles)
+- **Different permissions for different HQ users (feedback, 2026-11-02).** Charlie needs different permissions from other internal staff, so HQ access can't be a single all-or-nothing admin switch. Today the backend has only a boolean `users.is_admin` (epic1.task3). Before HQ is built, this needs permission levels or roles for internal users. A starting proposal, to confirm with Charlie: a founder/owner level with everything, including financial settings and managing other HQ users; an operations level for orders, restaurants, and drivers; a support level for customer issues; and read-only access to reports. Which actions each level gets is an open question (section 11).
 - Financial oversight: payouts, commissions, subscription revenue (see section 8), refunds/disputes across all products
 - System configuration: pricing rules, commission/subscription settings, service areas, feature flags
 - Support/escalation oversight — a manager's view above the front-line customer service tools in DZO Biz/Food
@@ -293,6 +294,7 @@ Some of the original brainstorm questions are now answered by Charlie's outreach
 **Technical decisions still open**
 
 - Any existing technical assets already built (even prototypes) for any of the four products, or is this fully greenfield?
+- What permission levels do internal DZO HQ users need, and what can each one do? Charlie needs different permissions from other staff (feedback 2026-11-02, see Epic 2 in section 2).
 - Preferred cloud provider, or is that up to the technical lead to decide?
 - Is a native iOS/Android approach preferred over cross-platform, given "iOS / Android / Mobile Developer" is listed as one role rather than split into two?
 - What platform does Charlie actually want for each of the four products? This plan assumes DZO Food and DZO Ride are downloadable mobile apps while DZO Biz and DZO HQ are responsive web apps (see section 5) — worth confirming that split matches his intent, rather than assuming all four should be app-store mobile apps or that any of them should be web-only.
