@@ -166,6 +166,7 @@ In short: **Epic 1 first (Epic 0 in parallel) → Epic 3 → Epic 4 + Epic 5 tog
 - **Maps/geocoding/routing:** Google Maps Platform or Mapbox — budget for usage-based billing that scales with driver/order volume.
 - **Payments:** Stripe Connect (built for marketplaces — handles split payments, payouts, PCI compliance) rather than building payment splitting in-house.
 - **Push notifications:** Firebase Cloud Messaging.
+- **Cloud provider (decided 2026-11-01):** Google Cloud, the primary choice since the company this is being built for mostly runs on it. Planned services and environment layout are in `EPIC1_TRACKER.md` epic1.task6.
 - **Observability:** OpenTelemetry end-to-end across all client apps and backend.
 - **CI/lint/security baseline:** static analysis, unit/integration tests, dependency and secret scanning wired into CI before any code merges — directly relevant to the Cybersecurity Engineer and QA/Automation roles Charlie listed.
 
@@ -293,7 +294,7 @@ Some of the original brainstorm questions are now answered by Charlie's outreach
 **Technical decisions still open**
 
 - Any existing technical assets already built (even prototypes) for any of the four products, or is this fully greenfield?
-- Preferred cloud provider, or is that up to the technical lead to decide?
+- ~~Preferred cloud provider, or is that up to the technical lead to decide?~~ Answered 2026-11-01: Google Cloud (see section 5). Still open: does DZO live in the employer's existing GCP organization and billing account, or its own?
 - Is a native iOS/Android approach preferred over cross-platform, given "iOS / Android / Mobile Developer" is listed as one role rather than split into two?
 - What platform does Charlie actually want for each of the four products? This plan assumes DZO Food and DZO Ride are downloadable mobile apps while DZO Biz and DZO HQ are responsive web apps (see section 5) — worth confirming that split matches his intent, rather than assuming all four should be app-store mobile apps or that any of them should be web-only.
 

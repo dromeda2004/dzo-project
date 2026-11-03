@@ -16,7 +16,7 @@
 | epic1.task3 — Auth & role-based access | done | commit `20afa1b` |
 | epic1.task4 — API layer conventions & integration scaffolding | done | commit `c5c2bb8` |
 | epic1.task5 — CI/CD pipeline | done | commit `57b0c84`, PR #1 |
-| epic1.task6 — Cloud infra & environments (dev/staging/prod) | blocked | blocked on cloud provider decision, see `DZO_TECH_ROADMAP.md` §11 |
+| epic1.task6 — Cloud infra & environments (dev/staging/prod) | blocked | Google Cloud chosen (2026-11-01); blocked on GCP org/billing ownership and the monorepo decision |
 | epic1.task7 — Observability (OpenTelemetry) | done | commit `88bccfa` |
 | epic1.task8 — Dependency lock file | done | commit `aacc268` |
 
@@ -221,9 +221,33 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 }
 ```
 
-**Blocked on:** cloud provider decision (`DZO_TECH_ROADMAP.md` §11 — open question, being discussed with a coworker as of 2026-09-18) and the monorepo/multirepo decision, since deploy tooling and repo layout are coupled.
+**Cloud provider: Google Cloud (GCP)** — confirmed as the primary choice on 2026-11-01. The company the project is being built for mostly runs on Google Cloud. Details are still to be discussed.
 
-**Deviations & open items:** Cannot start until the cloud provider is chosen.
+**Still blocked on:**
+- **Whose GCP organization and billing account.** The employer's existing org, or one DZO owns? This decides who controls billing and access, and it's hard to change later.
+- **The monorepo/multirepo decision**, since deploy tooling and repo layout are coupled.
+
+**Planned GCP services** (proposal, not yet provisioned):
+
+| Service | Role | When |
+|---|---|---|
+| Cloud Run | Runs the FastAPI container; a Cloud Run Job runs `alembic upgrade head` before each deploy | this task |
+| Cloud SQL for PostgreSQL 16 | Managed database, same major version as CI | this task |
+| Artifact Registry | Stores Docker images built by CI | this task |
+| Secret Manager | `SECRET_KEY`, DB password (replaces the dev placeholder noted in epic1.task3) | this task |
+| IAM + Workload Identity Federation | GitHub Actions deploys without a stored service-account key | this task |
+| Cloud Logging / Monitoring | Comes with Cloud Run, nothing to set up | this task |
+| Cloud Trace | Tracing backend for epic1.task7: set `OTEL_EXPORTER_OTLP_ENDPOINT` plus auth | this task, or right after |
+| Cloud Storage | Menu item photo uploads | epic3.task3 follow-up |
+| Firebase Cloud Messaging | Push notifications to merchants and drivers (`fcm_server_key` stub) | Epic 3 order flow / Epic 6 |
+| Google Maps Platform | Geocoding, routing, live map (`google_maps_api_key` stub); Maps vs. Mapbox still open in roadmap §5 | Epic 6 |
+| Memorystore (Redis) | Only if real-time updates outgrow polling | later, if needed |
+
+Not planned: GKE and Compute Engine, since Cloud Run covers this scale with far less to operate.
+
+**Environment layout:** one GCP project per environment (`dzo-dev`, `dzo-staging`, `dzo-prod`) under one billing account. Dev and staging use small Cloud SQL instances; Cloud Run scales to zero when idle.
+
+**Deviations & open items:** Cannot start until the org/billing question is answered. The CD step deferred in epic1.task5 is built as part of this task.
 
 ---
 
