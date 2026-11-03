@@ -39,6 +39,12 @@ Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scop
 4. **Manual or automatic ready-time?** Roadmap §3 recommends manual (staff tap a button) for MVP and puts automatic prediction in Epic 9. This tracker assumes manual.
 5. **How do merchants learn about new orders?** Polling the order inbox (task6) is the simplest MVP. Push/WebSocket delivery depends on the real-time stack decision (`AGENTS_DZO.md` §1) and likely FCM. Proposed: polling for now.
 6. **How does the claimed driver get notified of the ready-time?** Task8 records it and changes the state; delivering the notification to the driver's phone belongs to Epic 6 (DZO Ride) and the push provider decision.
+7. **Pickup orders** (feedback 2026-11-02). Customers should be able to choose pickup instead of delivery. Roadmap §3 proposes a pickup path: Placed → Acknowledged → Ready-time set → Picked up, with no driver states. This affects the restaurant side directly:
+   - **Schema:** `orders` needs a fulfillment type (pickup/delivery), and `delivery_address_id` must become nullable for pickup orders. Best done in task3's migration or its own migration before task5.
+   - **task5:** the transition guard needs a separate allowed path per fulfillment type.
+   - **task7:** acknowledging a pickup order goes to Acknowledged only, never to Open for claim.
+   - **task8:** for pickup orders, ready-time can be set straight from Acknowledged (no driver to wait for), and the customer is notified rather than a driver.
+   - **New action:** the restaurant marks a pickup order as collected (Ready-time set → Picked up). Proposed as part of task8.
 
 ---
 
@@ -164,7 +170,8 @@ Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scop
 **Files (expected):** `app/services/order_lifecycle.py` (new `services` package), `tests/test_order_lifecycle.py`
 
 **Acceptance criteria:**
-- [ ] Allowed transitions are exactly Placed → Acknowledged → Open for claim → Claimed → Ready-time set → Picked up → Delivered, plus whatever open question 1 decides about cancellation
+- [ ] Allowed transitions for delivery orders are exactly Placed → Acknowledged → Open for claim → Claimed → Ready-time set → Picked up → Delivered, plus whatever open question 1 decides about cancellation
+- [ ] Pickup orders follow their own path (open question 7), and the guard rejects driver states for them
 - [ ] Each transition sets its timestamp (`acknowledged_at`, `claimed_at`, `ready_time`, `picked_up_at`, `delivered_at`)
 - [ ] Concurrent transitions on the same order can't both succeed (row lock or a conditional `UPDATE ... WHERE status = ...`). This matters most for Epic 6's claim race, but the guard should handle it from the start
 - [ ] Illegal transitions return 409 in the standard error envelope
@@ -285,5 +292,6 @@ Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scop
 - [ ] Restaurants can be onboarded and staff are authorized per restaurant (task1, task2)
 - [ ] A complete menu can be managed and read back, including categories, modifiers, and the 86 toggle (task3)
 - [ ] A seeded order can be walked through Placed → Acknowledged → Open for claim and Claimed → Ready-time set via the API, with illegal transitions rejected (task4–task8)
-- [ ] Open questions 1–3 are answered and recorded in this file
+- [ ] Open questions 1–3 and 7 (pickup) are answered and recorded in this file
+- [ ] If pickup is confirmed: a seeded pickup order can be walked through Placed → Acknowledged → Ready-time set → Picked up
 - [ ] Epic 4 (DZO Food) can build customer ordering against the menu and order endpoints
