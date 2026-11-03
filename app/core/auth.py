@@ -12,7 +12,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.models import User
+from app.models import Restaurant, User
+from app.models.enums import RestaurantStaffRole
 
 settings = get_settings()
 
@@ -88,5 +89,53 @@ def require_role(role: Role) -> Callable[[User], Coroutine[Any, Any, User]]:
         if role not in user_roles(user):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
         return user
+
+    return dependency
+
+
+# Higher rank can do everything a lower rank can — see docs/EPIC3_TRACKER.md epic3.task1.
+RESTAURANT_ROLE_RANK = {
+    RestaurantStaffRole.STAFF: 0,
+    RestaurantStaffRole.MANAGER: 1,
+    RestaurantStaffRole.OWNER: 2,
+}
+
+
+def require_restaurant_role(
+    min_role: RestaurantStaffRole,
+) -> Callable[..., Coroutine[Any, Any, Restaurant]]:
+    """Gate a route on the path's `restaurant_id`: the user must be on that
+    restaurant's staff with at least `min_role`. Internal admins pass for any
+    restaurant. Unlike require_role(Role.MERCHANT), being staff at some *other*
+    restaurant isn't enough.
+    """
+
+    async def dependency(
+        restaurant_id: int,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> Restaurant:
+        restaurant = await db.get(Restaurant, restaurant_id)
+        if restaurant is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found"
+            )
+        # Admin access goes through user_roles so it stays one check to change once
+        # HQ users get permission levels (EPIC1_TRACKER.md epic1.task3 open items).
+        if Role.ADMIN in user_roles(user):
+            return restaurant
+        membership = next(
+            (m for m in user.restaurant_staff_memberships if m.restaurant_id == restaurant_id),
+            None,
+        )
+        if membership is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Not on this restaurant's staff"
+            )
+        if RESTAURANT_ROLE_RANK[membership.role] < RESTAURANT_ROLE_RANK[min_role]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient restaurant role"
+            )
+        return restaurant
 
     return dependency

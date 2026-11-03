@@ -142,6 +142,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 
 **Deviations & open items:**
 - No registration/user-creation endpoint exists yet — out of scope for this task, which assumes users already exist. Tests seed users directly via `db_session`. Worth revisiting when `epic1.task4` designs the general API layer, or whenever DZO Food/Biz need customer/merchant sign-up.
+- Internal admin access is a single `is_admin` flag, so every admin can do everything. Feedback 2026-11-02: Charlie needs different permissions from other HQ users, so admin needs to split into permission levels before DZO HQ (Epic 2) is built. See roadmap Epic 2. Likely a schema change (an internal role column or table) plus a `require_admin_permission(...)` style dependency alongside `require_role`.
 - Token expiry is a flat 24h with no refresh-token flow — reasonable for an MVP-stage single access token, revisit if session length becomes a real product concern.
 - `SECRET_KEY` defaults to an intentionally obvious placeholder (`dev-insecure-secret-change-in-production`) in `app/core/config.py` and `.env.example` — must be overridden per environment before any real deployment (ties into `epic1.task6` and roadmap Epic 8 launch prep).
 
