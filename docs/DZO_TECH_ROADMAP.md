@@ -177,6 +177,7 @@ In short: **Epic 1 first (Epic 0 in parallel) → Epic 3 → Epic 4 + Epic 5 tog
 - **Maps/geocoding/routing:** Google Maps Platform or Mapbox — budget for usage-based billing that scales with driver/order volume.
 - **Payments:** Stripe Connect (built for marketplaces — handles split payments, payouts, PCI compliance) rather than building payment splitting in-house.
 - **Push notifications:** Firebase Cloud Messaging.
+- **Cloud provider (decided 2026-11-01):** Google Cloud, the primary choice since the company this is being built for mostly runs on it. Planned services and environment layout are in `EPIC1_TRACKER.md` epic1.task6.
 - **Observability:** OpenTelemetry end-to-end across all client apps and backend.
 - **CI/lint/security baseline:** static analysis, unit/integration tests, dependency and secret scanning wired into CI before any code merges — directly relevant to the Cybersecurity Engineer and QA/Automation roles Charlie listed.
 
@@ -304,6 +305,7 @@ Some of the original brainstorm questions are now answered by Charlie's outreach
 **Technical decisions still open**
 
 - Any existing technical assets already built (even prototypes) for any of the four products, or is this fully greenfield?
+- ~~Preferred cloud provider, or is that up to the technical lead to decide?~~ Answered 2026-11-01: Google Cloud (see section 5). Still open: does DZO live in the employer's existing GCP organization and billing account, or its own?
 - Does the proposed pickup path in section 3 (Placed → Acknowledged → Ready-time set → Picked up) match what Charlie wants for pickup orders? (feedback 2026-11-02)
 - What permission levels do internal DZO HQ users need, and what can each one do? Charlie needs different permissions from other staff (feedback 2026-11-02, see Epic 2 in section 2).
 - Preferred cloud provider, or is that up to the technical lead to decide?
