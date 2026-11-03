@@ -12,7 +12,7 @@
 
 | Task | Status | Evidence |
 |---|---|---|
-| epic3.task1 — Per-restaurant merchant authorization | todo | — |
+| epic3.task1 — Per-restaurant merchant authorization | done | commit `581c709` |
 | epic3.task2 — Restaurant onboarding (admin-driven) | todo | — |
 | epic3.task3 — Menu management | todo | — |
 | epic3.task4 — Dev seed data for manual walk-throughs | todo | — |
@@ -55,20 +55,28 @@ Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scop
   "id": "epic3.task1",
   "behavior": "Merchant endpoints are authorized per restaurant: a user can only act on restaurants they're on the staff of, and owner/manager/staff roles limit what they can do there",
   "verification": "integration tests: staff of restaurant A get 403 on restaurant B; each restaurant staff role's allowed/denied actions covered",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `581c709`; tests/test_restaurant_auth.py"
 }
 ```
 
 **Why first:** `require_role(Role.MERCHANT)` from epic1.task3 only checks that a user works at *some* restaurant. Every Biz endpoint below needs "works at *this* restaurant, with at least this role."
 
-**Files (expected):** `app/core/auth.py` (new dependency, e.g. `require_restaurant_role(min_role)` reading `restaurant_id` from the path), `tests/test_restaurant_auth.py`
+**Files:** `app/core/auth.py` (`require_restaurant_role(min_role)`, `RESTAURANT_ROLE_RANK`), `tests/test_restaurant_auth.py`
+
+**Design decision:** `require_restaurant_role(min_role)` reads `restaurant_id` from the route path and returns the `Restaurant`, so routes get the loaded row for free. It reuses the staff memberships `get_current_user` already loads, so the check adds one query (the restaurant lookup). Inactive restaurants still pass, so an owner can set up a menu before the restaurant goes live.
 
 **Acceptance criteria:**
-- [ ] A dependency resolves the current user's `RestaurantStaff` row for the path's `restaurant_id`, returning 403 if there is none and 404 if the restaurant doesn't exist
-- [ ] Role ordering owner > manager > staff is enforced; proposed defaults: staff can run the order flow and toggle availability, managers can also edit the menu, only owners manage staff
-- [ ] Internal admins (`is_admin`) can act on any restaurant (needed for onboarding and for HQ later). Keep this check in one place: HQ users will get different permission levels (feedback 2026-11-02, see roadmap Epic 2), so "is admin" will become "has this HQ permission"
-- [ ] `make check` passes
+- [x] A dependency resolves the current user's `RestaurantStaff` row for the path's `restaurant_id`, returning 403 if there is none and 404 if the restaurant doesn't exist — `test_staff_of_another_restaurant_rejected`, `test_non_staff_user_rejected`, `test_unknown_restaurant_returns_404`
+- [x] Role ordering owner > manager > staff is enforced — `test_role_hierarchy` covers all 9 combinations of staff role and minimum role
+- [x] Internal admins (`is_admin`) can act on any restaurant — `test_admin_allowed_at_any_restaurant`. The check goes through `user_roles()`, the one place `is_admin` is read, so it's a single change once HQ users get permission levels (feedback 2026-11-02, see roadmap Epic 2)
+- [x] `make check` passes — ruff, black, mypy clean; 32 tests pass (18 existing + 14 new)
+
+**Deviations & open items:**
+- The per-action defaults (staff run orders and the 86 toggle, managers also edit the menu, only owners manage staff) aren't applied here, since no menu, order, or staff endpoints exist yet. Each later task picks the `min_role` for its routes using those defaults.
+- Tests mount the dependency on a throwaway FastAPI app rather than the real one, since adding a placeholder route would be dead code (same reasoning as epic1.task4).
+- Mutation check: replacing the membership's restaurant match with `True` makes `test_staff_of_another_restaurant_rejected` fail, so the cross-restaurant check is actually covered.
+- Checking a restaurant that doesn't exist returns 404 even to non-staff. Restaurant existence isn't secret (customers will browse restaurants in Epic 4), so this leaks nothing.
 
 ---
 
