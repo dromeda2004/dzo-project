@@ -11,14 +11,14 @@
 
 | Task | Status | Evidence |
 |---|---|---|
-| epic1.task1 — Repo skeleton & tooling | done | commit `03f4003` |
-| epic1.task2 — Core DB schema | done | commit `b99df5c` |
-| epic1.task3 — Auth & role-based access | done | commit `5be897c` |
-| epic1.task4 — API layer conventions & integration scaffolding | done | commit `876a42f` |
-| epic1.task5 — CI/CD pipeline | done | commit `8c483d4`, PR #1 |
+| epic1.task1 — Repo skeleton & tooling | done | commit `f4712e1` |
+| epic1.task2 — Core DB schema | done | commit `9a3f488` |
+| epic1.task3 — Auth & role-based access | done | commit `20afa1b` |
+| epic1.task4 — API layer conventions & integration scaffolding | done | commit `c5c2bb8` |
+| epic1.task5 — CI/CD pipeline | done | commit `57b0c84`, PR #1 |
 | epic1.task6 — Cloud infra & environments (dev/staging/prod) | blocked | blocked on cloud provider decision, see `DZO_TECH_ROADMAP.md` §11 |
-| epic1.task7 — Observability (OpenTelemetry) | done | commit `7dc25b7` |
-| epic1.task8 — Dependency lock file | done | commit `012cdda` |
+| epic1.task7 — Observability (OpenTelemetry) | done | commit `88bccfa` |
+| epic1.task8 — Dependency lock file | done | commit `aacc268` |
 
 WIP = 1: no task should be marked `active` until it's the single thing actually being worked on. Only one row above may be `active` at any time.
 
@@ -32,7 +32,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "FastAPI app boots, has a working /health endpoint, and the repo has make setup/test/lint/check wired up",
   "verification": "manual: make run + curl /health; automated: tests/test_health.py",
   "state": "done",
-  "evidence": "commit 03f4003"
+  "evidence": "commit f4712e1"
 }
 ```
 
@@ -56,7 +56,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "SQLAlchemy models exist for the finalized core schema (users, driver_profiles, restaurant_staff, restaurants, menu_items, menu_item_modifiers/modifier_options, addresses, orders, order_items, driver_locations, payments, payouts, driver_subscriptions, ratings, promotions), matching the seven-state order lifecycle in AGENTS_DZO.md section 1, with a first Alembic migration applied",
   "verification": "alembic upgrade head runs clean against a fresh DB; unit tests confirm each model's constraints (uniqueness, FKs, required fields)",
   "state": "done",
-  "evidence": "commits b99df5c (models + migration), 1820b48 (tests)"
+  "evidence": "commits 9a3f488 (models + migration), b5cb6bc (tests)"
 }
 ```
 
@@ -121,7 +121,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "Users can authenticate and requests are authorized by role (customer, driver, merchant, internal admin/staff)",
   "verification": "unit + integration tests covering login, token validation, and role-gated endpoint access",
   "state": "done",
-  "evidence": "commit `5be897c`"
+  "evidence": "commit `20afa1b`"
 }
 ```
 
@@ -155,7 +155,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "Consistent API conventions (request/response schemas, error handling, versioning) are established, with scaffolding in place for third-party integrations (payments, maps, push)",
   "verification": "a second real endpoint (beyond /health) follows the convention and has passing tests",
   "state": "done",
-  "evidence": "commit `876a42f`"
+  "evidence": "commit `c5c2bb8`"
 }
 ```
 
@@ -187,7 +187,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "make check (lint + test) runs automatically on every push/PR, blocking merge on failure",
   "verification": "a deliberately failing PR is blocked by CI; a passing PR is allowed to merge",
   "state": "done",
-  "evidence": "commit `8c483d4`; CI run 38071251136 (green on master); PR #1 (blocked, closed unmerged)"
+  "evidence": "commit `57b0c84`; CI run 38071251136 (green on master); PR #1 (blocked, closed unmerged)"
 }
 ```
 
@@ -196,7 +196,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 **Design decision:** Two GitHub Actions jobs on every push and PR. `make check` runs against a `postgres:16` service container after `alembic upgrade head`, so a broken migration fails CI too. `secret scan (gitleaks)` runs gitleaks v8.30.1 (pinned Docker image) over full git history. Branch protection on `master` requires both checks, requires changes to land via PR (0 approvals, since this is a solo repo for now), and applies to admins, so nobody can push straight to `master` or bypass a red check.
 
 **Acceptance criteria:**
-- [x] CI runs `make check` on every push — first run 38071251136 on `8c483d4` passed both jobs
+- [x] CI runs `make check` on every push — first run 38071251136 on `57b0c84` passed both jobs
 - [x] Failing checks block merge — PR #1 added an unused import; `make check` failed on ruff F401 and GitHub reported `mergeStateStatus: BLOCKED`. Closed unmerged, branch deleted. The passing half of the verification is the PR that merged this tracker update.
 - [x] Secret scanning included per `AGENTS_DZO.md` §11 Level 1 — gitleaks job; full history was clean (11 commits) before it was enabled, so no allowlist was needed
 
@@ -235,7 +235,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "OpenTelemetry instrumentation is wired into the FastAPI app for traces/metrics/logs",
   "verification": "manual: a request produces a visible trace in whatever backend is configured",
   "state": "done",
-  "evidence": "commit `7dc25b7`; tests/test_telemetry.py; manual trace check in local Jaeger (2026-10-15)"
+  "evidence": "commit `88bccfa`; tests/test_telemetry.py; manual trace check in local Jaeger (2026-10-15)"
 }
 ```
 
@@ -266,7 +266,7 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
   "behavior": "Every environment (local, CI, future deploy images) installs the exact same dependency versions, and a pyproject.toml change without an updated lock fails CI",
   "verification": "CI installs via uv sync --locked and passes; uv sync --locked fails locally when pyproject.toml is edited without re-locking",
   "state": "done",
-  "evidence": "commit `012cdda`"
+  "evidence": "commit `aacc268`"
 }
 ```
 
