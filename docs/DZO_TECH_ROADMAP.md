@@ -53,6 +53,7 @@ Charlie's list of what needs to be built maps cleanly onto epics. Each epic belo
 Goal: one place for Charlie and internal staff to see and manage everything happening across Food, Ride, and Biz.
 - Cross-product analytics and reporting: order volume, delivery time, cancellation rate, driver utilization, merchant performance, revenue — all three products in one dashboard
 - Cross-product user/account/permission management (customers, drivers, merchants, internal staff roles)
+- **Different permissions for different HQ users (feedback, 2026-11-02).** Charlie needs different permissions from other internal staff, so HQ access can't be a single all-or-nothing admin switch. Today the backend has only a boolean `users.is_admin` (epic1.task3). Before HQ is built, this needs permission levels or roles for internal users. A starting proposal, to confirm with Charlie: a founder/owner level with everything, including financial settings and managing other HQ users; an operations level for orders, restaurants, and drivers; a support level for customer issues; and read-only access to reports. Which actions each level gets is an open question (section 11).
 - Financial oversight: payouts, commissions, subscription revenue (see section 8), refunds/disputes across all products
 - System configuration: pricing rules, commission/subscription settings, service areas, feature flags
 - Support/escalation oversight — a manager's view above the front-line customer service tools in DZO Biz/Food
@@ -70,6 +71,7 @@ Goal: one place for Charlie and internal staff to see and manage everything happ
 - Customer iOS and Android applications
 - Restaurant discovery, menu browsing, cart, modifiers
 - Checkout: address, instructions, tip, promo codes, confirmation
+- **Pickup as an alternative to delivery (feedback, 2026-11-02).** The customer chooses pickup or delivery at checkout. Pickup orders skip the driver entirely: no address, no driver tip or delivery fee, and the customer is notified when the food is ready. Section 0 already lists pickup as part of DZO Food, but the lifecycle in section 3 doesn't cover it yet — see the pickup path proposed there.
 - Order status / tracking screen, reflecting the full lifecycle in section 3 (placed → acknowledged → claimed by a driver → out for delivery → delivered)
 - Notifications and communications (order updates, receipts)
 - Promotions, loyalty, credits, and referrals
@@ -130,6 +132,15 @@ This is a real, well-established dispatch pattern, and the comparison to Walmart
 - **Cherry-picking risk:** if drivers can see order details (distance, likely tip, which restaurant) before claiming, some orders may go consistently unclaimed — short tip, far distance, a slower restaurant. Walmart's own driver platform relies on transparency and fair rotation of offers rather than penalizing declines, which suggests a small, trusted pool may be enough for DZO at launch without needing round-robin distribution or bot-prevention machinery on day one.
 - **How does the restaurant compute/communicate the "perfect time"?** Is this a manual action by restaurant staff (tap a button when food is close to done), or does it need an automatic prep-time estimation feature that notifies based on order complexity/kitchen load? Manual is far simpler for MVP; automatic prediction is a reasonable Epic 9 growth feature (already added there).
 - **Single order vs. multi-order claims:** if a driver can only claim one order at a time under this model, that's simpler to build but may limit driver earnings efficiency since there's no batching multiple pickups into one trip. Worth confirming whether Charlie intends single-order claims only, at least initially.
+
+**Pickup orders (feedback 2026-11-02, not yet confirmed with Charlie).** The seven states above assume a driver. A customer picking up their own order needs its own path, otherwise the "no state skipped" rule (`AGENTS_DZO.md` §3) would be broken every time a pickup order jumps from Acknowledged to Picked up. Proposed pickup path, reusing existing states rather than inventing new ones:
+
+1. **Placed** — customer submits a pickup order
+2. **Acknowledged** — restaurant accepts and gives a prep-time estimate, which the customer sees as their pickup time
+3. **Ready-time set** — restaurant signals the food is ready; the *customer* is notified instead of a driver
+4. **Picked up** — customer collects it; this is the final state for pickup orders (no Delivered)
+
+Open for claim and Claimed never apply, and drivers never see pickup orders. Once Charlie confirms, `AGENTS_DZO.md` §1 needs updating to describe two paths, since it's the shared source of truth. Open questions: does pickup need a confirmation step at the counter (e.g. order number or code)? Can a customer switch between pickup and delivery after ordering?
 
 This lifecycle should become the backbone of the `EPIC3_TRACKER.md` and `EPIC6_TRACKER.md` task breakdowns once drafted, since it defines the actual state transitions and the API contract between DZO Biz, DZO Food, and DZO Ride.
 
@@ -295,6 +306,9 @@ Some of the original brainstorm questions are now answered by Charlie's outreach
 
 - Any existing technical assets already built (even prototypes) for any of the four products, or is this fully greenfield?
 - ~~Preferred cloud provider, or is that up to the technical lead to decide?~~ Answered 2026-11-01: Google Cloud (see section 5). Still open: does DZO live in the employer's existing GCP organization and billing account, or its own?
+- Does the proposed pickup path in section 3 (Placed → Acknowledged → Ready-time set → Picked up) match what Charlie wants for pickup orders? (feedback 2026-11-02)
+- What permission levels do internal DZO HQ users need, and what can each one do? Charlie needs different permissions from other staff (feedback 2026-11-02, see Epic 2 in section 2).
+- Preferred cloud provider, or is that up to the technical lead to decide?
 - Is a native iOS/Android approach preferred over cross-platform, given "iOS / Android / Mobile Developer" is listed as one role rather than split into two?
 - What platform does Charlie actually want for each of the four products? This plan assumes DZO Food and DZO Ride are downloadable mobile apps while DZO Biz and DZO HQ are responsive web apps (see section 5) — worth confirming that split matches his intent, rather than assuming all four should be app-store mobile apps or that any of them should be web-only.
 
