@@ -308,7 +308,6 @@ Some of the original brainstorm questions are now answered by Charlie's outreach
 - ~~Preferred cloud provider, or is that up to the technical lead to decide?~~ Answered 2026-11-01: Google Cloud (see section 5). Still open: does DZO live in the employer's existing GCP organization and billing account, or its own?
 - Does the proposed pickup path in section 3 (Placed → Acknowledged → Ready-time set → Picked up) match what Charlie wants for pickup orders? (feedback 2026-11-02)
 - What permission levels do internal DZO HQ users need, and what can each one do? Charlie needs different permissions from other staff (feedback 2026-11-02, see Epic 2 in section 2).
-- Preferred cloud provider, or is that up to the technical lead to decide?
 - Is a native iOS/Android approach preferred over cross-platform, given "iOS / Android / Mobile Developer" is listed as one role rather than split into two?
 - What platform does Charlie actually want for each of the four products? This plan assumes DZO Food and DZO Ride are downloadable mobile apps while DZO Biz and DZO HQ are responsive web apps (see section 5) — worth confirming that split matches his intent, rather than assuming all four should be app-store mobile apps or that any of them should be web-only.
 
