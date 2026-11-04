@@ -17,6 +17,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "bcrypt>=4.0",
     "pyjwt>=2.8",
+    # IANA timezone data for zoneinfo (restaurant timezones). Windows and slim
+    # container images ship without a system timezone database.
+    "tzdata>=2024.1",
     "opentelemetry-sdk>=1.45",
     "opentelemetry-exporter-otlp-proto-http>=1.45",
     "opentelemetry-instrumentation-fastapi>=0.66b1",

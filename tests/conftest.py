@@ -2,7 +2,7 @@ from collections.abc import AsyncGenerator
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
@@ -16,17 +16,26 @@ settings = get_settings()
 # default function-scoped loop means a pooled connection from a prior test's loop
 # can't be reused and raises "Event loop is closed" / "operation in progress".
 _test_engine = create_async_engine(settings.database_url, poolclass=NullPool)
-_TestSessionLocal = async_sessionmaker(
-    bind=_test_engine, class_=AsyncSession, expire_on_commit=False
-)
 
 
 @pytest_asyncio.fixture
 async def db_session() -> AsyncGenerator[AsyncSession]:
-    """A DB session for a single test, rolled back afterwards so tests don't leak state."""
-    async with _TestSessionLocal() as session:
-        yield session
-        await session.rollback()
+    """A DB session for a single test, rolled back afterwards so tests don't leak state.
+
+    The session runs inside an outer transaction and turns each commit() into a
+    savepoint release, so routes that commit (e.g. creating a restaurant) still
+    leave nothing behind once the outer transaction rolls back.
+    """
+    async with _test_engine.connect() as connection:
+        transaction = await connection.begin()
+        session = AsyncSession(
+            bind=connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+        )
+        try:
+            yield session
+        finally:
+            await session.close()
+            await transaction.rollback()
 
 
 @pytest_asyncio.fixture
