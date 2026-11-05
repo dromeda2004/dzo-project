@@ -1,6 +1,7 @@
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import create_access_token
 from app.core.security import hash_password
 from app.models import User
 
@@ -92,3 +93,60 @@ async def test_admin_ping_allows_admin(client: AsyncClient, db_session: AsyncSes
     response = await client.get("/admin/ping", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
+
+
+async def _login(client: AsyncClient, email: str, password: str) -> int:
+    response = await client.post("/auth/login", json={"email": email, "password": password})
+    return response.status_code
+
+
+async def test_login_is_case_insensitive(client: AsyncClient, db_session: AsyncSession) -> None:
+    await _create_user(db_session, email="mixed@example.com", password="correct horse")
+
+    assert await _login(client, "Mixed@Example.COM", "correct horse") == 200
+
+
+async def test_change_password(client: AsyncClient, db_session: AsyncSession) -> None:
+    user = await _create_user(db_session, email="changer@example.com", password="temporary-pass")
+    token = create_access_token(user.id)
+
+    response = await client.post(
+        "/auth/password",
+        json={"current_password": "temporary-pass", "new_password": "a-better-password"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 204
+    assert await _login(client, "changer@example.com", "temporary-pass") == 401
+    assert await _login(client, "changer@example.com", "a-better-password") == 200
+
+
+async def test_change_password_requires_current_password(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await _create_user(db_session, email="changer@example.com", password="temporary-pass")
+    token = create_access_token(user.id)
+
+    response = await client.post(
+        "/auth/password",
+        json={"current_password": "wrong", "new_password": "a-better-password"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert await _login(client, "changer@example.com", "temporary-pass") == 200
+
+
+async def test_change_password_rejects_short_password(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await _create_user(db_session, email="changer@example.com", password="temporary-pass")
+    token = create_access_token(user.id)
+
+    response = await client.post(
+        "/auth/password",
+        json={"current_password": "temporary-pass", "new_password": "short"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422

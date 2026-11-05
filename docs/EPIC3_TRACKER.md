@@ -13,7 +13,7 @@
 | Task | Status | Evidence |
 |---|---|---|
 | epic3.task1 — Per-restaurant merchant authorization | done | commit `581c709` |
-| epic3.task2 — Restaurant onboarding (admin-driven) | todo | — |
+| epic3.task2 — Restaurant onboarding (admin-driven) | done | commit `f76ef99` |
 | epic3.task3 — Menu management | todo | — |
 | epic3.task4 — Dev seed data for manual walk-throughs | todo | — |
 | epic3.task5 — Order state machine (transition guard) | todo | — |
@@ -87,22 +87,55 @@ Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scop
   "id": "epic3.task2",
   "behavior": "An internal admin can create a restaurant and its owner account; an owner can add and remove staff at their restaurant",
   "verification": "integration tests for each endpoint, including role denials; manual: create a restaurant + owner, log in as the owner",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `f76ef99`; tests/test_restaurants.py, tests/test_auth.py; manual walk-through 2026-11-03"
 }
 ```
 
 **Design note:** Pilot restaurants are Charlie's own (roadmap §4), so onboarding is admin-driven rather than self-serve sign-up. This also partly closes epic1.task3's open item that no user-creation endpoint exists. Customer self-registration stays with Epic 4.
 
-**Files (expected):** `app/routers/restaurants.py`, `app/schemas/restaurant.py`, `tests/test_restaurants.py`
+**Decisions (agreed 2026-11-03, before starting):**
+- **First password:** there's no email service yet, so invite or reset links aren't possible. The admin (or an owner, for staff) sets a temporary password and passes it on directly. A `POST /auth/password` endpoint lets the user change it. Invite/reset links wait until an email provider exists.
+- **Existing accounts:** adding staff by an email that already has an account attaches that user rather than creating a duplicate (e.g. Charlie may already be an admin or customer).
+- **Who manages staff:** owners add and remove staff and can make someone a co-owner. The last owner can't be removed or demoted. Removing someone only removes their staff link, not their account.
+- **Which admins:** any `is_admin` user for now, until HQ permission levels are designed (roadmap Epic 2).
+- **Removing a restaurant:** deactivate via `is_active`, never delete, since orders and payouts reference it.
+- **Missing restaurant fields** (phone, opening hours, coordinates): not added here. Epic 4 needs hours and Epic 6 needs coordinates; add them when there's a feature to check them against.
+
+**Files:** `app/routers/restaurants.py`, `app/schemas/restaurant.py`, `app/routers/auth.py` (`POST /auth/password`, case-insensitive login), `app/schemas/auth.py` (password rules), `app/main.py`, `tests/test_restaurants.py`, `tests/test_auth.py`, `tests/conftest.py`, `pyproject.toml` + `uv.lock` (`tzdata`)
+
+**Endpoints:**
+
+| Endpoint | Who |
+|---|---|
+| `POST /restaurants` | admin |
+| `GET /restaurants/{id}` | staff and up |
+| `PATCH /restaurants/{id}` (incl. `is_active`) | admin |
+| `GET /restaurants/{id}/staff` | owner |
+| `POST /restaurants/{id}/staff` (attach existing account, or create one with a temporary password) | owner |
+| `PATCH /restaurants/{id}/staff/{user_id}` (change role) | owner |
+| `DELETE /restaurants/{id}/staff/{user_id}` | owner |
+| `POST /auth/password` | any logged-in user |
+
+Admins pass every owner check (epic3.task1), so an admin onboards a restaurant with `POST /restaurants`, then `POST /restaurants/{id}/staff` with `role: owner`.
 
 **Acceptance criteria:**
-- [ ] Admin: create/update a restaurant (name, address, timezone, `is_active`)
-- [ ] Admin: create a user and attach them as the restaurant's owner
-- [ ] Owner: list, add, and remove staff and change their role; an owner can't remove the last owner
-- [ ] Passwords are hashed with the existing bcrypt helper; email uniqueness errors come back in the standard error envelope (`docs/API_CONVENTIONS.md`)
-- [ ] PII handling (emails, names) is covered by tests (`AGENTS_DZO.md` §3)
-- [ ] `make check` passes
+- [x] Admin: create/update a restaurant (name, address, timezone, `is_active`) — `test_admin_creates_restaurant`, `test_admin_updates_and_deactivates_restaurant`; non-admins get 403 (`test_non_admin_cannot_create_restaurant`, `test_owner_cannot_update_restaurant`); timezones are validated against the IANA database (`test_unknown_timezone_rejected`)
+- [x] Admin: create a user and attach them as the restaurant's owner — `test_admin_onboards_new_owner_who_can_then_log_in`; existing accounts are attached, not duplicated (`test_existing_account_is_attached_not_duplicated`)
+- [x] Owner: list, add, and remove staff and change their role; an owner can't remove the last owner — `test_owner_changes_staff_role`, `test_last_owner_cannot_be_demoted`, `test_owner_can_be_demoted_when_another_owner_exists`, `test_last_owner_cannot_be_removed`, `test_removing_staff_keeps_their_account`, `test_manager_cannot_add_staff`
+- [x] Passwords are hashed with the existing bcrypt helper; email uniqueness errors come back in the standard error envelope — new-account test checks the stored hash; duplicate cases return 409 in the envelope (`test_existing_account_with_password_rejected`, `test_adding_existing_staff_member_rejected`), as do concurrent-insert races (`IntegrityError` → 409)
+- [x] PII handling (emails, names) is covered by tests — password hashes never appear in responses, the staff list returns exactly `user_id/email/full_name/role` and is owner-only (`test_staff_list_is_owner_only_and_hides_password_hashes`)
+- [x] `make check` passes — ruff, black, mypy clean; 56 tests pass (32 existing + 24 new)
+- [x] Manual walk-through against a running server (2026-11-03): admin created a restaurant and added a new owner; the owner logged in with the temporary password, changed it (old password then 401, new 200), added a cook, listed staff; removing themselves as last owner returned 409 and deactivating the restaurant returned 403. Walk-through rows deleted afterwards.
+
+**Deviations & open items:**
+- **Test fixture change:** this is the first task whose routes commit. `tests/conftest.py`'s `db_session` now runs inside an outer transaction with `join_transaction_mode="create_savepoint"`, so a route's `commit()` only releases a savepoint and each test still rolls back fully. Checked: row counts in `users`/`restaurants`/`restaurant_staff` are 0 before and after the full suite.
+- **Login is now case-insensitive.** New accounts store emails lowercased so "Owner@Example.com" finds an existing owner@example.com. Login had to match, or an owner typing their email with capitals would be locked out. The unique index on `users.email` is still case-sensitive, so two accounts differing only by case could exist if created outside these endpoints; a `lower(email)` unique index would close that (needs a migration — fold into task3's).
+- **Email existence is visible to owners:** adding staff by email reveals whether that email has an account (attach vs. "full_name and password required"). Acceptable for a small pilot of trusted owners; revisit before Biz is opened to outside merchants (roadmap Epic 9).
+- **Changing a password doesn't log out other sessions.** Tokens are stateless JWTs with a 24h expiry and no revocation (epic1.task3). Fine for now; matters if an account is ever compromised.
+- **Email validation is a loose pattern**, not `pydantic.EmailStr`, to avoid a new dependency for a check that can't prove an address works anyway. Real verification comes with an email provider.
+- **`tzdata` added as a dependency.** Windows (and slim container images, relevant to epic1.task6's Cloud Run plan) have no system timezone database, so `zoneinfo` couldn't validate timezones without it.
+- **Mutation check:** loosening the last-owner guard (`<= 1` → `<= 0`) makes both last-owner tests fail.
 
 ---
 
