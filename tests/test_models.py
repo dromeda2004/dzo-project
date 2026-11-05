@@ -76,3 +76,12 @@ async def test_restaurant_staff_unique_per_user_restaurant(db_session: AsyncSess
     )
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+async def test_user_email_unique_ignoring_case(db_session: AsyncSession) -> None:
+    db_session.add(User(email="owner@example.com", password_hash="x", full_name="A"))
+    await db_session.flush()
+
+    db_session.add(User(email="Owner@Example.com", password_hash="x", full_name="B"))
+    with pytest.raises(IntegrityError):
+        await db_session.flush()

@@ -1,6 +1,6 @@
 from app.models.address import Address
 from app.models.driver import DriverLocation, DriverProfile, DriverSubscription
-from app.models.menu import MenuItem, MenuItemModifier, ModifierOption
+from app.models.menu import MenuCategory, MenuItem, MenuItemModifier, ModifierOption
 from app.models.order import Order, OrderItem
 from app.models.payment import Payment, Payout
 from app.models.promotion import Promotion
@@ -13,6 +13,7 @@ __all__ = [
     "DriverLocation",
     "DriverProfile",
     "DriverSubscription",
+    "MenuCategory",
     "MenuItem",
     "MenuItemModifier",
     "ModifierOption",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -26,7 +26,9 @@ class User(Base, TimestampMixin):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # Unique on lower(email), so "Owner@Example.com" and "owner@example.com" can't
+    # be two accounts; login matches on lower(email) too (epic3.task3).
+    email: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(20), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
@@ -43,3 +45,5 @@ class User(Base, TimestampMixin):
     orders: Mapped[list[Order]] = relationship(
         back_populates="customer", foreign_keys="Order.customer_id"
     )
+
+    __table_args__ = (Index("uq_users_email_lower", func.lower(email), unique=True),)
