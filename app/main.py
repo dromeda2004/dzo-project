@@ -4,7 +4,7 @@ from app.core.config import get_settings
 from app.core.database import engine
 from app.core.error_handlers import register_exception_handlers
 from app.core.telemetry import setup_telemetry
-from app.routers import admin, auth, health, restaurants
+from app.routers import admin, auth, health, menu, restaurants
 
 settings = get_settings()
 
@@ -22,6 +22,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(restaurants.router)
+app.include_router(menu.router)
 
 # Future domain routers get included here as they're built, e.g.:
 # from app.food.router import router as food_router
