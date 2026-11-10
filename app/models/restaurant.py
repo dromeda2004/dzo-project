@@ -10,7 +10,7 @@ from app.models.base import TimestampMixin
 from app.models.enums import RestaurantStaffRole
 
 if TYPE_CHECKING:
-    from app.models.menu import MenuItem
+    from app.models.menu import MenuCategory, MenuItem
     from app.models.order import Order
     from app.models.user import User
 
@@ -25,6 +25,7 @@ class Restaurant(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     staff: Mapped[list[RestaurantStaff]] = relationship(back_populates="restaurant")
+    menu_categories: Mapped[list[MenuCategory]] = relationship(back_populates="restaurant")
     menu_items: Mapped[list[MenuItem]] = relationship(back_populates="restaurant")
     orders: Mapped[list[Order]] = relationship(back_populates="restaurant")
 

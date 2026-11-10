@@ -14,7 +14,7 @@
 |---|---|---|
 | epic3.task1 — Per-restaurant merchant authorization | done | commit `581c709` |
 | epic3.task2 — Restaurant onboarding (admin-driven) | done | commit `f76ef99` |
-| epic3.task3 — Menu management | todo | — |
+| epic3.task3 — Menu management | done | commit `277c7e9` |
 | epic3.task4 — Dev seed data for manual walk-throughs | todo | — |
 | epic3.task5 — Order state machine (transition guard) | todo | — |
 | epic3.task6 — Order inbox for merchants | todo | — |
@@ -45,6 +45,7 @@ Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scop
    - **task7:** acknowledging a pickup order goes to Acknowledged only, never to Open for claim.
    - **task8:** for pickup orders, ready-time can be set straight from Acknowledged (no driver to wait for), and the customer is notified rather than a driver.
    - **New action:** the restaurant marks a pickup order as collected (Ready-time set → Picked up). Proposed as part of task8.
+   - **Decision (2026-11-04): pickup is deferred.** It was left out of task3's migration. When it comes back it needs its own migration (fulfillment type, nullable `delivery_address_id`) before task5.
 
 ---
 
@@ -146,8 +147,8 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
   "id": "epic3.task3",
   "behavior": "Merchants can create, update, and list their restaurant's menu: categories, items (price, description, photo URL), the 86 availability toggle, and modifier groups with options",
   "verification": "integration tests per endpoint and per role; manual: build a small menu for a seeded restaurant and read it back",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `277c7e9`; tests/test_menu.py, tests/test_models.py, tests/test_restaurants.py; migration round-trip and manual walk-through 2026-11-04"
 }
 ```
 
@@ -161,12 +162,45 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
 **Files (expected):** `app/models/menu.py`, `alembic/versions/*`, `app/routers/menu.py`, `app/schemas/menu.py`, `tests/test_menu.py`
 
 **Acceptance criteria:**
-- [ ] CRUD for categories, items, modifiers, and options, scoped to the merchant's own restaurant via task1
-- [ ] 86 toggle is its own endpoint usable by `staff` (the most frequent action during service)
-- [ ] Prices are `Decimal` end to end, rejecting negatives
-- [ ] A full menu read (categories → items → modifiers → options) in one call, ready for Epic 4 to reuse
-- [ ] Archived items disappear from the menu but existing `order_items` still resolve
-- [ ] Migration round-trips cleanly; `make check` passes
+**Decisions (made 2026-11-04 when starting; pickup deferred per open question 7):**
+- **Categories are optional.** `menu_items.category_id` is nullable with `ON DELETE SET NULL`: deleting a category leaves its items on the menu, uncategorized. Categories are hard-deleted (nothing references them historically).
+- **Selection limits replace `is_required`.** `min_selections` (default 0) and `max_selections` (NULL = no limit), enforced by check constraints and the schemas. The migration maps `is_required = true` to `min_selections = 1`, and back on downgrade. "Size" is min 1 / max 1; "up to 3 toppings" is min 0 / max 3.
+- **Sort order** on categories, items, modifiers, and options (`sort_order`, then `id`), so merchants control the order customers see.
+- **Items are archived, never deleted** (`DELETE` sets `is_archived`). Archived items are 404 to every menu endpoint. Modifiers and options are hard-deleted, since `order_items.selected_modifiers` snapshots them instead of referencing them.
+- **Who can do what:** owners and managers edit the menu; any staff member can read it and use the 86 toggle.
+- **Money** is `Decimal` in and out, serialized as a string (`"12.50"`), rejected if negative, over 10 digits, or more than 2 decimal places, and quantized to cents so create responses match stored values. Option `price_delta` is also non-negative: sizes are modelled as the base price plus add-ons from the smallest.
+- **Case-insensitive email uniqueness** (carried over from task2): `users.email`'s unique index is replaced by a unique index on `lower(email)`.
+
+**Files:** `app/models/menu.py`, `app/models/user.py`, `app/models/restaurant.py`, `alembic/versions/e244c811d626_menu_management.py`, `app/routers/menu.py`, `app/schemas/menu.py`, `app/schemas/base.py` (`PatchModel`), `app/schemas/restaurant.py`, `app/main.py`, `tests/test_menu.py`, `tests/factories.py` (helpers moved out of `tests/test_restaurants.py`), `tests/test_models.py`, `tests/test_restaurants.py`
+
+**Endpoints** (all under `/restaurants/{id}/menu`):
+
+| Endpoint | Who |
+|---|---|
+| `GET ""` (full menu: categories → items → modifiers → options, then uncategorized items) | staff and up |
+| `POST /categories`, `PATCH /categories/{category_id}`, `DELETE /categories/{category_id}` | manager and up |
+| `POST /items` (optionally with nested modifiers and options), `PATCH /items/{item_id}`, `DELETE /items/{item_id}` (archives) | manager and up |
+| `PUT /items/{item_id}/availability` (the 86 toggle) | staff and up |
+| `POST /items/{item_id}/modifiers`, `PATCH /modifiers/{modifier_id}`, `DELETE /modifiers/{modifier_id}` | manager and up |
+| `POST /modifiers/{modifier_id}/options`, `PATCH /options/{option_id}`, `DELETE /options/{option_id}` | manager and up |
+
+**Acceptance criteria:**
+- [x] CRUD for categories, items, modifiers, and options, scoped to the merchant's own restaurant via task1 — `test_manager_builds_menu_and_reads_it_back`, `test_update_item_category_and_price`, `test_deleting_category_keeps_its_items`, `test_add_update_and_delete_modifiers_and_options`; every lookup filters on `restaurant_id`, so another restaurant's ids return 404 (`test_ids_from_another_restaurant_are_not_found`, `test_item_cannot_use_another_restaurants_category`, `test_other_restaurants_staff_cannot_read_menu`)
+- [x] 86 toggle is its own endpoint usable by `staff` — `test_staff_can_read_and_86_but_not_edit` (staff get 403 on every edit endpoint)
+- [x] Prices are `Decimal` end to end, rejecting negatives — `test_invalid_prices_rejected`, `test_price_is_stored_exactly`
+- [x] A full menu read (categories → items → modifiers → options) in one call, ready for Epic 4 to reuse — `GET /restaurants/{id}/menu`, ordering checked by `test_menu_follows_sort_order`
+- [x] Archived items disappear from the menu but existing `order_items` still resolve — `test_archived_item_leaves_menu_but_order_history_resolves`
+- [x] Migration round-trips cleanly; `make check` passes — `alembic upgrade head` → `downgrade -1` → `upgrade head` clean, and `alembic check` finds no drift; ruff, black, mypy clean; 74 tests pass (56 existing + 16 menu tests + 2 regression tests below)
+- [x] Manual walk-through against a running server (2026-11-04): admin created a restaurant and added a manager, cook, and owner; the manager (logging in with a capitalized email) built Mains and Drinks, a Burger with Size (min 1 / max 1) and Toppings (up to 3), and Lemonade, then archived an item; the cook 86'd the Burger, was refused a price change (403), and read the menu back in the right order, with the Burger unavailable and the archived item gone. Walk-through rows deleted afterwards.
+
+**Deviations & open items:**
+- **`PatchModel` (new in `app/schemas/base.py`):** PATCH bodies reject an explicit `null` for NOT NULL fields (422). Before this, `PATCH /restaurants/{id}` with `{"name": null}` reached the database and returned a 500; `RestaurantUpdate` now uses it too (`test_restaurant_name_cannot_be_nulled`). Fields that may be cleared opt in via `clearable`.
+- **Lowercase email index** — `test_user_email_unique_ignoring_case`. The migration would fail if two existing accounts differed only in case; there are none outside local dev data.
+- **No restore for archived items.** Archiving is one-way through the API for now; restoring needs a direct DB change. Add an endpoint if merchants ask for it.
+- **Options can't be 86'd on their own** (e.g. out of avocado but the burger is fine). Only whole items have `is_available`. Easy to add later as a column on `modifier_options`.
+- **`min_selections` isn't checked against the number of options** (a "choose 2" group with one option can be saved). Epic 4's order validation must check selections against the limits anyway, so it's left there.
+- **Menu reads are merchant-only.** Customers reading a menu (and hiding 86'd items) is Epic 4; it can reuse `MenuOut`.
+- **Mutation checks:** removing the `restaurant_id` filter from any of the item, modifier, option, or category lookups, dropping the archived filter, or loosening the PATCH limit check each makes at least one test fail.
 
 ---
 

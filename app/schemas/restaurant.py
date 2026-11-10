@@ -5,7 +5,7 @@ from pydantic import AfterValidator, BaseModel, Field
 
 from app.models.enums import RestaurantStaffRole
 from app.schemas.auth import NewPassword
-from app.schemas.base import ORMBase
+from app.schemas.base import ORMBase, PatchModel
 
 # Deliberately loose: catches typos, not every invalid address. Real verification
 # needs an email provider, which doesn't exist yet (see EPIC3_TRACKER.md epic3.task2).
@@ -33,7 +33,7 @@ class RestaurantCreate(BaseModel):
     timezone: Timezone = "America/Los_Angeles"
 
 
-class RestaurantUpdate(BaseModel):
+class RestaurantUpdate(PatchModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     address: str | None = Field(default=None, min_length=1, max_length=500)
     timezone: Timezone | None = None
