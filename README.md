@@ -20,6 +20,25 @@ make run                 # starts the API at http://localhost:8000
 
 Visit `http://localhost:8000/health` — should return `{"status": "ok"}`. Interactive API docs are at `http://localhost:8000/docs`.
 
+### Dev seed data
+
+```bash
+make seed    # after make migrate
+```
+
+Fills the local database with a pilot restaurant (**DZO Pilot Kitchen**) and its menu, plus a customer with a delivery address, a driver, and 3 orders in the Placed state. You need these for manual walk-throughs, because orders can't be created through the API until Epic 4. It's safe to re-run: existing rows are left alone. On each run it adds just enough new orders to bring the Placed count back to 3, so you get fresh ones after walking some through the lifecycle. It refuses to run unless `DATABASE_URL` points at `localhost`.
+
+Every seeded account uses the password **`dzo-dev-only`**. It is for local development only and is not a secret.
+
+| Email | Role |
+|---|---|
+| `admin@dzo.test` | admin (`is_admin`) |
+| `owner@dzo.test` | restaurant owner |
+| `manager@dzo.test` | restaurant manager |
+| `staff@dzo.test` | restaurant staff |
+| `customer@dzo.test` | customer |
+| `driver@dzo.test` | driver |
+
 ### Tracing (OpenTelemetry)
 
 `make db-up` also starts a local Jaeger. To send traces to it, set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` in `.env`, restart the API, make a request, and open `http://localhost:16686` (service `dzo-backend`). Each request shows up as a trace with its SQL queries as child spans. Leave the variable unset to turn export off — tests and CI run that way.
