@@ -126,11 +126,13 @@ This is a real, well-established dispatch pattern, and the comparison to Walmart
 6. **Picked up** — driver collects the order at the restaurant
 7. **Delivered** — driver completes the delivery, customer/driver confirm (photo/PIN, per Epic 6)
 
+**Cancellation (decided 2026-11-10).** The restaurant can reject or cancel an order when its requirements can't be met (item unavailable, a request it can't fulfil, too busy, closing). It moves to a terminal **Cancelled** state with a reason from a fixed list and an optional note, and only from Placed, Acknowledged, or Open for claim. Once a driver has claimed the order, cancelling is an HQ action. Customer notification and refunds come with Epic 4 and Epic 5. Details in `EPIC3_TRACKER.md` open question 1.
+
 **Open questions this raises, worth resolving before Epic 3/6 design work starts:**
 
 - **What happens if no driver claims an order?** A fallback is needed — a timeout that either expands visibility, pings drivers directly, or escalates to manual assignment via the DZO HQ/dispatch console.
 - **Cherry-picking risk:** if drivers can see order details (distance, likely tip, which restaurant) before claiming, some orders may go consistently unclaimed — short tip, far distance, a slower restaurant. Walmart's own driver platform relies on transparency and fair rotation of offers rather than penalizing declines, which suggests a small, trusted pool may be enough for DZO at launch without needing round-robin distribution or bot-prevention machinery on day one.
-- **How does the restaurant compute/communicate the "perfect time"?** Is this a manual action by restaurant staff (tap a button when food is close to done), or does it need an automatic prep-time estimation feature that notifies based on order complexity/kitchen load? Manual is far simpler for MVP; automatic prediction is a reasonable Epic 9 growth feature (already added there).
+- **How does the restaurant compute/communicate the "perfect time"?** Is this a manual action by restaurant staff (tap a button when food is close to done), or does it need an automatic prep-time estimation feature that notifies based on order complexity/kitchen load? Manual is far simpler for MVP; automatic prediction is a reasonable Epic 9 growth feature (already added there). **Decided 2026-11-11: manual for MVP.**
 - **Single order vs. multi-order claims:** if a driver can only claim one order at a time under this model, that's simpler to build but may limit driver earnings efficiency since there's no batching multiple pickups into one trip. Worth confirming whether Charlie intends single-order claims only, at least initially.
 
 **Pickup orders (feedback 2026-11-02, not yet confirmed with Charlie).** The seven states above assume a driver. A customer picking up their own order needs its own path, otherwise the "no state skipped" rule (`AGENTS_DZO.md` §3) would be broken every time a pickup order jumps from Acknowledged to Picked up. Proposed pickup path, reusing existing states rather than inventing new ones:
@@ -294,7 +296,7 @@ Some of the original brainstorm questions are now answered by Charlie's outreach
 
 - What's the fallback when an order goes unclaimed by any driver?
 - Does Charlie want any cherry-picking mitigation at launch, or is the driver pool small/trusted enough to skip that for now (Walmart's own approach suggests this is a reasonable default)?
-- Is the "perfect time" notification a manual action by restaurant staff, or does it need to be computed automatically from day one?
+- ~~Is the "perfect time" notification a manual action by restaurant staff, or does it need to be computed automatically from day one?~~ Decided 2026-11-11: manual for MVP (`EPIC3_TRACKER.md` open question 4).
 
 **Team & fit**
 
