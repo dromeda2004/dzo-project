@@ -1,4 +1,4 @@
-.PHONY: setup lock-upgrade db-up db-down test lint check migrate run
+.PHONY: setup lock-upgrade db-up db-down test lint check migrate seed run
 
 setup:
 	uv sync --locked --extra dev
@@ -17,6 +17,10 @@ db-down:
 
 migrate:
 	alembic upgrade head
+
+# Dev data for manual walk-throughs (scripts/seed_dev.py). Local DB only; safe to re-run.
+seed:
+	python -m scripts.seed_dev
 
 run:
 	uvicorn app.main:app --reload

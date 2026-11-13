@@ -15,7 +15,7 @@
 | epic3.task1 — Per-restaurant merchant authorization | done | commit `581c709` |
 | epic3.task2 — Restaurant onboarding (admin-driven) | done | commit `f76ef99` |
 | epic3.task3 — Menu management | done | commit `277c7e9` |
-| epic3.task4 — Dev seed data for manual walk-throughs | todo | — |
+| epic3.task4 — Dev seed data for manual walk-throughs | done | commit `9de4ecb` |
 | epic3.task5 — Order state machine (transition guard) | todo | — |
 | epic3.task6 — Order inbox for merchants | todo | — |
 | epic3.task7 — Acknowledge order with prep-time estimate | todo | — |
@@ -211,20 +211,27 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
   "id": "epic3.task4",
   "behavior": "One command populates a local DB with a pilot restaurant, its staff, a menu, a customer, a driver, and orders in the Placed state",
   "verification": "manual: run the seed against a fresh DB, log in as each seeded user",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `9de4ecb`; tests/test_seed_dev.py; manual: seeded a fresh DB twice (second run created nothing), refused a non-local DATABASE_URL, logged in as all six seeded users 2026-11-09"
 }
 ```
 
 **Why:** Orders can't be created through the API until Epic 4 exists, but the Definition of Done (`AGENTS_DZO.md` §6) needs a manual walk-through of each state transition for task6–task8. A repeatable seed replaces hand-written SQL.
 
-**Files (expected):** `scripts/seed_dev.py`, `Makefile` (`seed` target), `README.md`
+**Files:** `scripts/seed_dev.py`, `Makefile` (`seed` target), `README.md`, `tests/test_seed_dev.py`
+
+**Decisions (2026-11-09):**
+- Seeded rows are found by natural key (email, restaurant name, category/item name) and never modified, so re-runs don't undo menu edits made through the API.
+- Orders are the exception: each run tops the pilot restaurant back up to 3 Placed orders, so walk-throughs that move orders forward can be repeated.
+- Seeded emails use `@dzo.test` so they never collide with test fixtures (`@example.com`), since tests share the dev database.
+- "Local" means the `DATABASE_URL` host is `localhost`, `127.0.0.1`, `::1`, or a unix socket.
+- An admin account is seeded too (not in the original behavior), so restaurant onboarding can be walked through as well.
 
 **Acceptance criteria:**
-- [ ] Idempotent: running it twice doesn't duplicate data
-- [ ] Refuses to run unless the database URL points at a local DB
-- [ ] Seeded passwords are obviously dev-only and documented in the README
-- [ ] `make check` passes
+- [x] Idempotent: running it twice doesn't duplicate data
+- [x] Refuses to run unless the database URL points at a local DB
+- [x] Seeded passwords are obviously dev-only and documented in the README
+- [x] `make check` passes
 
 ---
 
