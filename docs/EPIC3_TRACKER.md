@@ -31,14 +31,23 @@ WIP = 1: no task should be marked `active` until it's the single thing actually 
 
 ## Open questions to settle before the order tasks (task5–task8)
 
-Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scoping this epic. None of them block task1–task4.
+Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scoping this epic. None of them block task1–task4. **Questions 1–6 were decided on 2026-11-10/11, so task5–task8 are unblocked; question 7 (pickup) is deferred.**
 
-1. **Can a restaurant reject or cancel an order?** The seven-state lifecycle has no rejected/cancelled state, but a restaurant will sometimes need one (item 86'd after the order was placed, kitchen closing, a customer calling to cancel). Adding a state changes the shared source of truth across all four products, so this needs Charlie's sign-off, not a quiet addition (`AGENTS_DZO.md` §4). Proposed: a terminal `cancelled` state reachable from Placed/Acknowledged/Open for claim, with a reason field; refunds handled once Epic 5 exists.
+1. **Can a restaurant reject or cancel an order?** **Decision (2026-11-10): yes**, when the order's requirements can't be met (an ingredient ran out, a requested modification can't be made, the kitchen is too busy or closing).
+   - **New terminal state `cancelled`**, reachable only from Placed, Acknowledged, or Open for claim, i.e. before a driver claims the order. After a claim, cancellation goes through HQ, so a driver never drives to a cancelled pickup.
+   - **Reason required** from a fixed list, plus an optional free-text note: `item_unavailable`, `cannot_fulfill_request`, `too_busy`, `closing`, `other` (proposed: note required for `other`). The fixed list keeps cancellation rate reportable in HQ and task9.
+   - **Stored on the order:** `cancelled_at`, `cancellation_reason`, `cancellation_note`; new migration in task5.
+   - **Still open:** which staff roles may cancel (proposed: any staff, like the 86 toggle, since the kitchen is who finds out); how the customer is told and refunded (Epic 4 / Epic 5); HQ cancelling after a claim (Epic 2/6).
 2. **How do Acknowledged and Open for claim relate?** The roadmap says acknowledgment "opens the order up" to drivers. Proposed: `POST .../acknowledge` moves Placed → Acknowledged → Open for claim in one transaction, through the task5 guard, recording `acknowledged_at`. Without an `order_status_events` table (epic1.task2 decision), Acknowledged is never observable on its own. If something needs to happen between the two (e.g. a delay before drivers see it), they become separate steps.
+   - **Decision (2026-11-11): one step**, as proposed.
 3. **Can the restaurant signal the ready-time before a driver has claimed?** The lifecycle puts Ready-time set after Claimed. If food is nearly done and nobody has claimed it, that's the unclaimed-order fallback question from roadmap §3, still open. Proposed for MVP: ready-time can only be set on a Claimed order; the unclaimed case is escalated through HQ later.
+   - **Decision (2026-11-11): no**, ready-time only on a Claimed order, as proposed.
 4. **Manual or automatic ready-time?** Roadmap §3 recommends manual (staff tap a button) for MVP and puts automatic prediction in Epic 9. This tracker assumes manual.
+   - **Decision (2026-11-11): manual** (staff tap a button).
 5. **How do merchants learn about new orders?** Polling the order inbox (task6) is the simplest MVP. Push/WebSocket delivery depends on the real-time stack decision (`AGENTS_DZO.md` §1) and likely FCM. Proposed: polling for now.
+   - **Decision (2026-11-11): polling**, as proposed.
 6. **How does the claimed driver get notified of the ready-time?** Task8 records it and changes the state; delivering the notification to the driver's phone belongs to Epic 6 (DZO Ride) and the push provider decision.
+   - **Decision (2026-11-11): as proposed.** task8 records the ready-time and moves the state; delivery to the driver is Epic 6.
 7. **Pickup orders** (feedback 2026-11-02). Customers should be able to choose pickup instead of delivery. Roadmap §3 proposes a pickup path: Placed → Acknowledged → Ready-time set → Picked up, with no driver states. This affects the restaurant side directly:
    - **Schema:** `orders` needs a fulfillment type (pickup/delivery), and `delivery_address_id` must become nullable for pickup orders. Best done in task3's migration or its own migration before task5.
    - **task5:** the transition guard needs a separate allowed path per fulfillment type.
@@ -252,8 +261,9 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
 **Files (expected):** `app/services/order_lifecycle.py` (new `services` package), `tests/test_order_lifecycle.py`
 
 **Acceptance criteria:**
-- [ ] Allowed transitions for delivery orders are exactly Placed → Acknowledged → Open for claim → Claimed → Ready-time set → Picked up → Delivered, plus whatever open question 1 decides about cancellation
-- [ ] Pickup orders follow their own path (open question 7), and the guard rejects driver states for them
+- [ ] Allowed transitions for delivery orders are exactly Placed → Acknowledged → Open for claim → Claimed → Ready-time set → Picked up → Delivered, plus Placed / Acknowledged / Open for claim → Cancelled (open question 1); nothing leaves Delivered or Cancelled
+- [ ] Cancelling requires a reason from the fixed list (open question 1) and sets `cancelled_at`; migration adds `cancelled` to `order_status` plus the cancellation columns
+- [ ] *(Deferred with pickup, open question 7)* Pickup orders follow their own path (open question 7), and the guard rejects driver states for them
 - [ ] Each transition sets its timestamp (`acknowledged_at`, `claimed_at`, `ready_time`, `picked_up_at`, `delivered_at`)
 - [ ] Concurrent transitions on the same order can't both succeed (row lock or a conditional `UPDATE ... WHERE status = ...`). This matters most for Epic 6's claim race, but the guard should handle it from the start
 - [ ] Illegal transitions return 409 in the standard error envelope
@@ -295,13 +305,14 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
 }
 ```
 
-**Lifecycle states touched:** 1 Placed → 2 Acknowledged → 3 Open for claim. Depends on open question 2.
+**Lifecycle states touched:** 1 Placed → 2 Acknowledged → 3 Open for claim. Per open question 2 (decided): one action, one transaction.
 
 **Files (expected):** `app/routers/merchant_orders.py`, `tests/test_merchant_orders.py`
 
 **Acceptance criteria:**
 - [ ] `prep_time_estimate_minutes` is required and within sane bounds (proposed 1–180)
 - [ ] Goes through the task5 guard; acknowledging twice returns 409
+- [ ] Reject/cancel endpoint (open question 1): takes a reason and optional note, allowed only before a driver claims, through the task5 guard; cancelling a Claimed or later order returns 409
 - [ ] `make check` passes; manual walk-through recorded here
 
 ---
@@ -318,13 +329,13 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
 }
 ```
 
-**Lifecycle states touched:** 4 Claimed → 5 Ready-time set. Depends on open questions 3, 4, and 6.
+**Lifecycle states touched:** 4 Claimed → 5 Ready-time set. Per open questions 3, 4, and 6 (decided): Claimed orders only, set manually, notification delivery in Epic 6.
 
 **Files (expected):** `app/routers/merchant_orders.py`, `tests/test_merchant_orders.py`
 
 **Acceptance criteria:**
 - [ ] Accepts either "ready now" or a future time; rejects past times
-- [ ] Rejected with 409 unless the order is Claimed (per the proposed answer to open question 3)
+- [ ] Rejected with 409 unless the order is Claimed (open question 3, decided)
 - [ ] Driver notification is out of scope (Epic 6), but the stored `ready_time` is what Epic 6 will read
 - [ ] `make check` passes; manual walk-through recorded here
 
@@ -358,7 +369,7 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
 }
 ```
 
-**Blocked on:** Epic 4 (customers) and Epic 5 (refunds go through the payment processor). Also depends on open question 1, since a cancellation is the simplest customer-service action.
+**Blocked on:** Epic 4 (customers) and Epic 5 (refunds go through the payment processor). Open question 1 is settled (restaurants can cancel before a claim, task7); this task covers cancellations customers ask for.
 
 ---
 

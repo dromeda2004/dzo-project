@@ -35,6 +35,8 @@ This is the entry point for anyone (human or AI-assisted) starting work on DZO �
 6. Driver picks up the order
 7. Driver delivers it; delivery is confirmed
 
+**Exit: Cancelled (decided 2026-11-10).** The restaurant can cancel an order it can't fulfil, with a reason, but only from states 1–3 (before a driver claims). Cancelled is terminal. See `EPIC3_TRACKER.md` open question 1.
+
 Every engineering session on DZO Food, Biz, or Ride should be able to say which of these seven states its work affects.
 
 ---
@@ -132,7 +134,7 @@ Every feature/task is tracked as a tuple, not a vague checkbox:
 |---|---|
 | Epic | A scoped unit of work mapped to one or more DZO products — see `DZO_TECH_ROADMAP.md` section 2 for the full list (Epic 0–9) |
 | Product | One of DZO Food, DZO Ride, DZO Biz, DZO HQ — see section 1 |
-| Order lifecycle state | One of Placed / Acknowledged / Open for claim / Claimed / Ready-time set / Picked up / Delivered — see section 1 and roadmap section 3 |
+| Order lifecycle state | One of Placed / Acknowledged / Open for claim / Claimed / Ready-time set / Picked up / Delivered, or the terminal Cancelled (from the first three only) — see section 1 and roadmap section 3 |
 | Claim | A driver voluntarily selecting an open order to deliver (not a platform-assigned dispatch) |
 | Ready-time signal | The restaurant's notification to a claimed driver that food is nearly done, timed so pickup and completion coincide |
 | Commission model | Standard percentage markup on customer orders (the default before any driver subscribes) |
