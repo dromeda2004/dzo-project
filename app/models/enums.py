@@ -17,6 +17,19 @@ class OrderStatus(enum.StrEnum):
     READY_TIME_SET = "ready_time_set"
     PICKED_UP = "picked_up"
     DELIVERED = "delivered"
+    # Terminal exit, reachable only before a driver claims (epic3 open question 1).
+    CANCELLED = "cancelled"
+
+
+class CancellationReason(enum.StrEnum):
+    """Why a restaurant cancelled an order. A fixed list so cancellation rate stays
+    reportable in HQ; `other` needs a note."""
+
+    ITEM_UNAVAILABLE = "item_unavailable"
+    CANNOT_FULFILL_REQUEST = "cannot_fulfill_request"
+    TOO_BUSY = "too_busy"
+    CLOSING = "closing"
+    OTHER = "other"
 
 
 class RaterRole(enum.StrEnum):
