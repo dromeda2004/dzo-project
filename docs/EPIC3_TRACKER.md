@@ -16,7 +16,7 @@
 | epic3.task2 — Restaurant onboarding (admin-driven) | done | commit `f76ef99` |
 | epic3.task3 — Menu management | done | commit `277c7e9` |
 | epic3.task4 — Dev seed data for manual walk-throughs | done | commit `9de4ecb` |
-| epic3.task5 — Order state machine (transition guard) | todo | — |
+| epic3.task5 — Order state machine (transition guard) | done | commit `e1cba81` |
 | epic3.task6 — Order inbox for merchants | todo | — |
 | epic3.task7 — Acknowledge order with prep-time estimate | todo | — |
 | epic3.task8 — Ready-time signal | todo | — |
@@ -251,23 +251,32 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
   "id": "epic3.task5",
   "behavior": "All order status changes go through one function that only allows the transitions in the seven-state lifecycle, sets the matching timestamp, and rejects anything else",
   "verification": "unit tests covering every allowed transition and a representative set of illegal ones (skips, backwards moves, repeats)",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `e1cba81`; tests/test_order_lifecycle.py (full transition matrix, illegal moves, data checks, two-connection claim race); migration round-trip, alembic check, downgrade refusal, and mutation checks 2026-11-15"
 }
 ```
 
 **Why its own task:** "No order-lifecycle state transition is skipped or faked" is a hard constraint (`AGENTS_DZO.md` §3). Biz (task7, task8), Ride (Epic 6), and HQ will all change order status. One guard used by all of them is how that constraint is enforced, rather than each endpoint checking it separately.
 
-**Files (expected):** `app/services/order_lifecycle.py` (new `services` package), `tests/test_order_lifecycle.py`
+**Files:** `app/services/order_lifecycle.py` (new `services` package), `app/models/enums.py` (`CANCELLED`, `CancellationReason`), `app/models/order.py`, `alembic/versions/75bea9e4303e_order_cancellation.py`, `app/core/error_handlers.py` (409 handler), `tests/test_order_lifecycle.py`, `tests/factories.py` (`create_order`, `create_driver`)
+
+**Decisions (2026-11-15):**
+- **One entry point:** `transition(session, order, target, **data)`. It checks the move is allowed, checks the data for the target state, records the timestamp, and flushes without committing, so task7 can acknowledge and open for claim in one transaction.
+- **Concurrency via a conditional UPDATE** (`WHERE id = ? AND status = <status the caller loaded>`), not `SELECT ... FOR UPDATE`. A second request racing the first waits for it, then matches nothing and gets a 409. Tested with two real connections (two drivers claiming at once).
+- **Data per state is enforced:** Acknowledged needs `prep_time_estimate_minutes` (> 0), Claimed needs `driver_id`, Ready-time set needs a timezone-aware `ready_time`, Cancelled needs a `cancellation_reason` (and a note for `other`). Fields that belong to another state are refused. These raise `InvalidTransitionDataError` (a caller bug, since routers validate input first), not a 409.
+- **Open for claim has no timestamp column**; it happens in the same transaction as acknowledging (open question 2).
+- **The database backs it up:** check constraint `ck_orders_cancellation_complete` means an order is `CANCELLED` exactly when it has `cancelled_at` and a reason.
+- **Migration downgrade** rebuilds `order_status` without `CANCELLED` (Postgres can't drop an enum value) and refuses to run while any order is cancelled.
+
 
 **Acceptance criteria:**
-- [ ] Allowed transitions for delivery orders are exactly Placed → Acknowledged → Open for claim → Claimed → Ready-time set → Picked up → Delivered, plus Placed / Acknowledged / Open for claim → Cancelled (open question 1); nothing leaves Delivered or Cancelled
-- [ ] Cancelling requires a reason from the fixed list (open question 1) and sets `cancelled_at`; migration adds `cancelled` to `order_status` plus the cancellation columns
+- [x] Allowed transitions for delivery orders are exactly Placed → Acknowledged → Open for claim → Claimed → Ready-time set → Picked up → Delivered, plus Placed / Acknowledged / Open for claim → Cancelled (open question 1); nothing leaves Delivered or Cancelled
+- [x] Cancelling requires a reason from the fixed list (open question 1) and sets `cancelled_at`; migration adds `cancelled` to `order_status` plus the cancellation columns
 - [ ] *(Deferred with pickup, open question 7)* Pickup orders follow their own path (open question 7), and the guard rejects driver states for them
-- [ ] Each transition sets its timestamp (`acknowledged_at`, `claimed_at`, `ready_time`, `picked_up_at`, `delivered_at`)
-- [ ] Concurrent transitions on the same order can't both succeed (row lock or a conditional `UPDATE ... WHERE status = ...`). This matters most for Epic 6's claim race, but the guard should handle it from the start
-- [ ] Illegal transitions return 409 in the standard error envelope
-- [ ] `make check` passes
+- [x] Each transition sets its timestamp (`acknowledged_at`, `claimed_at`, `ready_time`, `picked_up_at`, `delivered_at`)
+- [x] Concurrent transitions on the same order can't both succeed (row lock or a conditional `UPDATE ... WHERE status = ...`). This matters most for Epic 6's claim race, but the guard should handle it from the start
+- [x] Illegal transitions return 409 in the standard error envelope
+- [x] `make check` passes
 
 ---
 
