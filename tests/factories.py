@@ -1,11 +1,13 @@
-"""Shared helpers for creating users, restaurants, and staff in tests."""
+"""Shared helpers for creating users, restaurants, staff, drivers, and orders in tests."""
+
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import create_access_token
 from app.core.security import hash_password
-from app.models import Restaurant, RestaurantStaff, User
-from app.models.enums import RestaurantStaffRole
+from app.models import Address, DriverProfile, Order, Restaurant, RestaurantStaff, User
+from app.models.enums import OrderStatus, RestaurantStaffRole
 
 
 async def create_user(db_session: AsyncSession, *, email: str, is_admin: bool = False) -> User:
@@ -49,3 +51,42 @@ async def staffed_restaurant(
 
 def auth(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+
+async def create_driver(
+    db_session: AsyncSession, *, email: str = "driver@example.com"
+) -> DriverProfile:
+    user = await create_user(db_session, email=email)
+    profile = DriverProfile(user_id=user.id)
+    db_session.add(profile)
+    await db_session.flush()
+    return profile
+
+
+async def create_order(
+    db_session: AsyncSession,
+    restaurant: Restaurant | None = None,
+    *,
+    status: OrderStatus = OrderStatus.PLACED,
+    customer_email: str = "customer@example.com",
+) -> Order:
+    """An order with no items, for tests that only care about its status. Inserting it
+    straight into a later status skips the lifecycle guard, so use that only to set
+    up a starting point."""
+    restaurant = restaurant or await create_restaurant(db_session)
+    customer = await create_user(db_session, email=customer_email)
+    address = Address(
+        user_id=customer.id, line1="1 Test St", city="Springfield", state="CA", postal_code="90000"
+    )
+    db_session.add(address)
+    await db_session.flush()
+    order = Order(
+        customer_id=customer.id,
+        restaurant_id=restaurant.id,
+        delivery_address_id=address.id,
+        subtotal=Decimal("10.00"),
+        status=status,
+    )
+    db_session.add(order)
+    await db_session.flush()
+    return order

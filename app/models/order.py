@@ -4,12 +4,12 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Numeric, String
+from sqlalchemy import JSON, CheckConstraint, DateTime, Enum, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin
-from app.models.enums import OrderStatus
+from app.models.enums import CancellationReason, OrderStatus
 
 if TYPE_CHECKING:
     from app.models.address import Address
@@ -29,6 +29,14 @@ class Order(Base, TimestampMixin):
     """
 
     __tablename__ = "orders"
+    __table_args__ = (
+        # A cancelled order always has its reason and time, and nothing else does.
+        CheckConstraint(
+            "(status = 'CANCELLED') = "
+            "(cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL)",
+            name="ck_orders_cancellation_complete",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -52,6 +60,11 @@ class Order(Base, TimestampMixin):
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     proof_of_delivery: Mapped[str | None] = mapped_column(String(500))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancellation_reason: Mapped[CancellationReason | None] = mapped_column(
+        Enum(CancellationReason, name="cancellation_reason")
+    )
+    cancellation_note: Mapped[str | None] = mapped_column(String(500))
 
     customer: Mapped[User] = relationship(back_populates="orders", foreign_keys=[customer_id])
     restaurant: Mapped[Restaurant] = relationship(back_populates="orders")

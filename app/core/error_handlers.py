@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.schemas.errors import ErrorDetail, ErrorResponse
+from app.services.order_lifecycle import IllegalTransitionError
 
 
 def _code_for_status(status_code: int) -> str:
@@ -42,6 +43,12 @@ async def validation_exception_handler(
     )
 
 
+async def illegal_transition_handler(request: Request, exc: IllegalTransitionError) -> JSONResponse:
+    """An order status change the lifecycle doesn't allow (epic3.task5)."""
+    body = ErrorResponse(error=ErrorDetail(code="conflict", message=exc.message))
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=body.model_dump())
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Every 4xx/5xx from any router comes back as {"error": {"code", "message", "fields"?}}
     — see docs/API_CONVENTIONS.md."""
@@ -50,3 +57,4 @@ def register_exception_handlers(app: FastAPI) -> None:
     # the standard, harmless workaround.
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(IllegalTransitionError, illegal_transition_handler)  # type: ignore[arg-type]
