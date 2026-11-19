@@ -42,6 +42,19 @@ FastAPI/Starlette's built-in exceptions already.
 - Schemas live under `app/schemas/`, one file per domain (`auth.py`,
   `errors.py`, ...), mirroring `app/models/`.
 
+## Pagination
+
+Established in `epic3.task6` (merchant order inbox). Lists that grow without bound
+are paged by id, newest first, rather than by offset:
+
+- Query params: `limit` (default 50, max 100) and `before` (an id).
+- Response: `{"<items>": [...], "next_before": <id or null>}`. Pass `next_before`
+  back as `before` for the next, older page; `null` means there are no more.
+
+Paging by id means rows created between requests (a new order arriving while a
+merchant pages through the inbox) don't shift or repeat the pages, which offset
+paging would. Small, bounded lists like a restaurant's menu aren't paged.
+
 ## Versioning
 
 None yet — there are no external consumers of this API (all four DZO

@@ -17,7 +17,7 @@
 | epic3.task3 — Menu management | done | commit `277c7e9` |
 | epic3.task4 — Dev seed data for manual walk-throughs | done | commit `9de4ecb` |
 | epic3.task5 — Order state machine (transition guard) | done | commit `e1cba81` |
-| epic3.task6 — Order inbox for merchants | todo | — |
+| epic3.task6 — Order inbox for merchants | done | commit `f1d6fa2` |
 | epic3.task7 — Acknowledge order with prep-time estimate | todo | — |
 | epic3.task8 — Ready-time signal | todo | — |
 | epic3.task9 — Merchant analytics & reporting | blocked | needs real orders, i.e. Epic 4 |
@@ -287,18 +287,30 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
   "id": "epic3.task6",
   "behavior": "Restaurant staff can list their restaurant's orders filtered by status and view one order with its items, modifiers, delivery address, and claimed driver",
   "verification": "integration tests including cross-restaurant denial; manual: view the seeded orders",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `f1d6fa2`; tests/test_merchant_orders.py (incl. cross-restaurant denial and PII checks); mutation checks; manual: staff viewed the 3 seeded orders, customer refused, 2026-11-17"
 }
 ```
 
-**Files (expected):** `app/routers/merchant_orders.py`, `app/schemas/order.py`, `tests/test_merchant_orders.py`
+**Files:** `app/routers/merchant_orders.py`, `app/schemas/order.py`, `app/main.py`, `tests/test_merchant_orders.py`, `docs/API_CONVENTIONS.md` (pagination)
+
+**Endpoints** (any staff member at the restaurant, and admins):
+- `GET /restaurants/{id}/orders?status=…&limit=…&before=…`: the inbox. Each row: id, status, created_at, customer first name, item count, subtotal, prep-time estimate, ready time.
+- `GET /restaurants/{id}/orders/{order_id}`: one order with its items, delivery address, timestamps, driver, and cancellation details.
+
+**Decisions (2026-11-17):**
+- **Active means not Delivered and not Cancelled.** The tracker predates Cancelled. Both stay reachable with `?status=`; `status` can be repeated.
+- **Paged by order id, newest first** (`limit` default 50, max 100; `next_before` cursor), so orders arriving between polls don't shift pages. Recorded as the convention in `API_CONVENTIONS.md`.
+- **Customer details:** first name and delivery address (with delivery instructions) only. No email, phone, last name, or customer id. **Driver:** id, first name, vehicle.
+- **Item names are today's menu names**; prices and modifiers are the order-time snapshot. Snapshotting the name needs an `order_items` column, so it's left for Epic 4, which creates orders.
+- **Tenant scoping:** another restaurant's inbox is 403 (not on its staff); another restaurant's order through your own restaurant's path is 404.
+
 
 **Acceptance criteria:**
-- [ ] List endpoint filters by status (default: active orders, i.e. not Delivered), newest first, paginated
-- [ ] Detail shows each item's `price_at_order_time` and `selected_modifiers` snapshot, not today's menu prices
-- [ ] Only the minimum customer PII needed to fulfil the order is exposed (proposed: first name and delivery address, no email or phone)
-- [ ] `make check` passes
+- [x] List endpoint filters by status (default: active orders, i.e. not Delivered), newest first, paginated
+- [x] Detail shows each item's `price_at_order_time` and `selected_modifiers` snapshot, not today's menu prices
+- [x] Only the minimum customer PII needed to fulfil the order is exposed (proposed: first name and delivery address, no email or phone)
+- [x] `make check` passes
 
 ---
 
