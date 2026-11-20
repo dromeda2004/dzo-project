@@ -1,6 +1,10 @@
-"""The merchant order inbox (epic3.task6): any staff member can list their
-restaurant's orders and open one. Merchants poll the list for new orders
-(EPIC3_TRACKER.md open question 5)."""
+"""Merchant order endpoints. Any staff member at the restaurant (including a shared
+kitchen-tablet account) and admins can use all of them.
+
+- Inbox (epic3.task6): list the restaurant's orders and open one. Merchants poll
+  the list for new orders (EPIC3_TRACKER.md open question 5).
+- Acknowledge and cancel (epic3.task7), both through the task5 lifecycle guard.
+"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -11,7 +15,14 @@ from app.core.auth import require_restaurant_role
 from app.core.database import get_db
 from app.models import DriverProfile, Order, OrderItem, Restaurant
 from app.models.enums import OrderStatus, RestaurantStaffRole
-from app.schemas.order import OrderDetailOut, OrderListOut, OrderSummaryOut
+from app.schemas.order import (
+    AcknowledgeRequest,
+    CancelRequest,
+    OrderDetailOut,
+    OrderListOut,
+    OrderSummaryOut,
+)
+from app.services.order_lifecycle import transition
 
 router = APIRouter(prefix="/restaurants/{restaurant_id}/orders", tags=["merchant orders"])
 
@@ -70,6 +81,54 @@ async def get_order(
     restaurant: Restaurant = Depends(any_staff),
     db: AsyncSession = Depends(get_db),
 ) -> OrderDetailOut:
+    return OrderDetailOut.of(await _load_order(db, restaurant.id, order_id))
+
+
+@router.post("/{order_id}/acknowledge", response_model=OrderDetailOut)
+async def acknowledge_order(
+    order_id: int,
+    payload: AcknowledgeRequest,
+    restaurant: Restaurant = Depends(any_staff),
+    db: AsyncSession = Depends(get_db),
+) -> OrderDetailOut:
+    """Accept a Placed order with a prep-time estimate. It goes Placed -> Acknowledged
+    -> Open for claim in one transaction, so drivers see it straight away (open
+    question 2). Anything but a Placed order is a 409."""
+    order = await _load_order(db, restaurant.id, order_id)
+    await transition(
+        db,
+        order,
+        OrderStatus.ACKNOWLEDGED,
+        prep_time_estimate_minutes=payload.prep_time_estimate_minutes,
+    )
+    await transition(db, order, OrderStatus.OPEN_FOR_CLAIM)
+    await db.commit()
+    return OrderDetailOut.of(await _load_order(db, restaurant.id, order_id))
+
+
+@router.post("/{order_id}/cancel", response_model=OrderDetailOut)
+async def cancel_order(
+    order_id: int,
+    payload: CancelRequest,
+    restaurant: Restaurant = Depends(any_staff),
+    db: AsyncSession = Depends(get_db),
+) -> OrderDetailOut:
+    """Cancel an order the restaurant can't fulfil, with a reason. Only before a
+    driver claims it (Placed, Acknowledged, Open for claim); after that it's an HQ
+    action and this is a 409 (open question 1)."""
+    order = await _load_order(db, restaurant.id, order_id)
+    await transition(
+        db,
+        order,
+        OrderStatus.CANCELLED,
+        cancellation_reason=payload.reason,
+        cancellation_note=payload.note,
+    )
+    await db.commit()
+    return OrderDetailOut.of(await _load_order(db, restaurant.id, order_id))
+
+
+async def _load_order(db: AsyncSession, restaurant_id: int, order_id: int) -> Order:
     # Filtered on restaurant_id, so another restaurant's order is a 404.
     order = await db.scalar(
         select(Order)
@@ -79,8 +138,9 @@ async def get_order(
             selectinload(Order.items).selectinload(OrderItem.menu_item),
             selectinload(Order.driver).selectinload(DriverProfile.user),
         )
-        .where(Order.id == order_id, Order.restaurant_id == restaurant.id)
+        .where(Order.id == order_id, Order.restaurant_id == restaurant_id)
+        .execution_options(populate_existing=True)
     )
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    return OrderDetailOut.of(order)
+    return order

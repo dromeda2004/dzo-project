@@ -18,7 +18,7 @@
 | epic3.task4 — Dev seed data for manual walk-throughs | done | commit `9de4ecb` |
 | epic3.task5 — Order state machine (transition guard) | done | commit `e1cba81` |
 | epic3.task6 — Order inbox for merchants | done | commit `f1d6fa2` |
-| epic3.task7 — Acknowledge order with prep-time estimate | todo | — |
+| epic3.task7 — Acknowledge order with prep-time estimate | done | commit `c2cfe38` |
 | epic3.task8 — Ready-time signal | todo | — |
 | epic3.task9 — Merchant analytics & reporting | blocked | needs real orders, i.e. Epic 4 |
 | epic3.task10 — Merchant-side customer service tools | blocked | needs real customers, i.e. Epic 4 |
@@ -37,7 +37,8 @@ Carried over from `DZO_TECH_ROADMAP.md` §3 and §11, plus gaps found while scop
    - **New terminal state `cancelled`**, reachable only from Placed, Acknowledged, or Open for claim, i.e. before a driver claims the order. After a claim, cancellation goes through HQ, so a driver never drives to a cancelled pickup.
    - **Reason required** from a fixed list, plus an optional free-text note: `item_unavailable`, `cannot_fulfill_request`, `too_busy`, `closing`, `other` (proposed: note required for `other`). The fixed list keeps cancellation rate reportable in HQ and task9.
    - **Stored on the order:** `cancelled_at`, `cancellation_reason`, `cancellation_note`; new migration in task5.
-   - **Still open:** which staff roles may cancel (proposed: any staff, like the 86 toggle, since the kitchen is who finds out); how the customer is told and refunded (Epic 4 / Epic 5); HQ cancelling after a claim (Epic 2/6).
+   - **Who can cancel (decided 2026-11-18): any staff member**, including a shared kitchen-tablet account; owners and managers can too, from their own logins.
+   - **Still open:** how the customer is told and refunded (Epic 4 / Epic 5); HQ cancelling after a claim (Epic 2/6).
 2. **How do Acknowledged and Open for claim relate?** The roadmap says acknowledgment "opens the order up" to drivers. Proposed: `POST .../acknowledge` moves Placed → Acknowledged → Open for claim in one transaction, through the task5 guard, recording `acknowledged_at`. Without an `order_status_events` table (epic1.task2 decision), Acknowledged is never observable on its own. If something needs to happen between the two (e.g. a delay before drivers see it), they become separate steps.
    - **Decision (2026-11-11): one step**, as proposed.
 3. **Can the restaurant signal the ready-time before a driver has claimed?** The lifecycle puts Ready-time set after Claimed. If food is nearly done and nobody has claimed it, that's the unclaimed-order fallback question from roadmap §3, still open. Proposed for MVP: ready-time can only be set on a Claimed order; the unclaimed case is escalated through HQ later.
@@ -321,20 +322,33 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
   "id": "epic3.task7",
   "behavior": "A restaurant acknowledges a Placed order with a prep-time estimate, which moves it to Open for claim so drivers can see it",
   "verification": "integration tests + manual walk-through on a seeded order (AGENTS_DZO.md §6 lifecycle row)",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `c2cfe38`; tests/test_order_actions.py; mutation checks; manual walk-through on seeded restaurant 590, 2026-11-18 (recorded below)"
 }
 ```
 
 **Lifecycle states touched:** 1 Placed → 2 Acknowledged → 3 Open for claim. Per open question 2 (decided): one action, one transaction.
 
-**Files (expected):** `app/routers/merchant_orders.py`, `tests/test_merchant_orders.py`
+**Files:** `app/routers/merchant_orders.py`, `app/schemas/order.py` (`AcknowledgeRequest`, `CancelRequest`), `app/core/auth.py`, `app/core/config.py`, `app/schemas/auth.py`, `app/routers/auth.py` (stay-signed-in login), `tests/test_order_actions.py`, `README.md`
+
+**Endpoints** (any staff member at the restaurant, and admins):
+- `POST /restaurants/{id}/orders/{order_id}/acknowledge` with `{"prep_time_estimate_minutes": 1–180}`: Placed → Acknowledged → Open for claim in one transaction; returns the order detail.
+- `POST /restaurants/{id}/orders/{order_id}/cancel` with `{"reason": ..., "note": ...}`: → Cancelled from Placed, Acknowledged, or Open for claim; returns the order detail.
+
+**Decisions (2026-11-18):**
+- **One shared kitchen-tablet account per restaurant** is the expected setup: an ordinary `staff` account the owner adds. Any staff member can acknowledge and cancel, so the tablet can, and owners and managers can from their own logins. The record shows the account that acted, not the person.
+- **Stay-signed-in login:** `POST /auth/login` takes `"stay_signed_in": true` for a 30-day token (`STAY_SIGNED_IN_EXPIRE_DAYS`), so the tablet isn't logged out mid-service. Normal logins stay 24 hours. The login response now includes `expires_in` (seconds).
+- **Revoking a tablet:** staff membership and `is_active` are checked on every request, so removing the account from the restaurant's staff cuts access immediately, despite the long-lived token. Tested.
+- **Cancel validation** happens in the request schema (422): reason from the fixed list, note up to 500 characters and trimmed, required for `other`. Illegal moves (acknowledging twice, cancelling after a claim) are 409 from the task5 guard.
+
 
 **Acceptance criteria:**
-- [ ] `prep_time_estimate_minutes` is required and within sane bounds (proposed 1–180)
-- [ ] Goes through the task5 guard; acknowledging twice returns 409
-- [ ] Reject/cancel endpoint (open question 1): takes a reason and optional note, allowed only before a driver claims, through the task5 guard; cancelling a Claimed or later order returns 409
-- [ ] `make check` passes; manual walk-through recorded here
+- [x] `prep_time_estimate_minutes` is required and within sane bounds (proposed 1–180)
+- [x] Goes through the task5 guard; acknowledging twice returns 409
+- [x] Reject/cancel endpoint (open question 1): takes a reason and optional note, allowed only before a driver claims, through the task5 guard; cancelling a Claimed or later order returns 409
+- [x] `make check` passes; manual walk-through recorded here
+
+**Manual walk-through (2026-11-18, seeded restaurant 590):** the owner added `kitchen@dzo.test` as staff; it logged in with `stay_signed_in` (`expires_in` 2592000 s, 30 days) and saw the 3 seeded Placed orders. It acknowledged order 49 with 20 minutes → `open_for_claim`, `acknowledged_at` set; acknowledging again → 409 `conflict`. It cancelled order 50 with `item_unavailable` / "Out of burger buns" → `cancelled`; `other` with no note → 422. The inbox then showed 51 (placed) and 49 (open_for_claim). The owner removed the tablet from staff → its next inbox request was 403.
 
 ---
 

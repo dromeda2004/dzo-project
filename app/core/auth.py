@@ -31,8 +31,14 @@ class Role(enum.StrEnum):
     ADMIN = "admin"
 
 
-def create_access_token(user_id: int) -> str:
-    expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
+def token_lifetime(stay_signed_in: bool = False) -> timedelta:
+    if stay_signed_in:
+        return timedelta(days=settings.stay_signed_in_expire_days)
+    return timedelta(minutes=settings.access_token_expire_minutes)
+
+
+def create_access_token(user_id: int, *, stay_signed_in: bool = False) -> str:
+    expire = datetime.now(UTC) + token_lifetime(stay_signed_in)
     payload = {"sub": str(user_id), "exp": expire}
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     secret_key: str = "dev-insecure-secret-change-in-production"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
+    # Login with stay_signed_in, for a restaurant's shared kitchen tablet so it isn't
+    # logged out mid-service (epic3.task7). Removing the account from the
+    # restaurant's staff still cuts access on its next request.
+    stay_signed_in_expire_days: int = 30
 
     # Third-party integration credentials — provider not yet confirmed for any
     # of these (see DZO_TECH_ROADMAP.md §5). Unused stubs until roadmap Epic 5
