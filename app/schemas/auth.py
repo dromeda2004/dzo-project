@@ -23,6 +23,9 @@ NewPassword = Annotated[str, AfterValidator(validate_new_password)]
 class LoginRequest(BaseModel):
     email: str
     password: str
+    # A 30-day login instead of 24 hours, for a shared device such as a
+    # restaurant's kitchen tablet.
+    stay_signed_in: bool = False
 
 
 class PasswordChangeRequest(BaseModel):
@@ -33,6 +36,8 @@ class PasswordChangeRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    # Seconds until the token expires, so a client knows when to log in again.
+    expires_in: int
 
 
 class UserOut(ORMBase):

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import create_access_token, get_current_user
+from app.core.auth import create_access_token, get_current_user, token_lifetime
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password
 from app.models import User
@@ -25,7 +25,10 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password"
         )
-    return TokenResponse(access_token=create_access_token(user.id))
+    return TokenResponse(
+        access_token=create_access_token(user.id, stay_signed_in=payload.stay_signed_in),
+        expires_in=int(token_lifetime(payload.stay_signed_in).total_seconds()),
+    )
 
 
 @router.get("/me", response_model=UserOut)

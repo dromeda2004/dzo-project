@@ -39,6 +39,15 @@ Every seeded account uses the password **`dzo-dev-only`**. It is for local devel
 | `customer@dzo.test` | customer |
 | `driver@dzo.test` | driver |
 
+### Restaurant kitchen tablet
+
+A restaurant can run its order inbox on one shared device, logged in as the restaurant rather than a person:
+
+1. The owner adds a staff account for it: `POST /restaurants/{id}/staff` with `{"email": "kitchen@...", "role": "staff", "full_name": "Kitchen Tablet", "password": "..."}`.
+2. The tablet logs in with `"stay_signed_in": true`, which gives a 30-day login instead of 24 hours, so it isn't logged out mid-service.
+
+Any staff account, the tablet included, can read the inbox and acknowledge or cancel orders. If the tablet is lost, the owner removes it from the staff (`DELETE /restaurants/{id}/staff/{user_id}`), and it's refused on its next request even with days left on its login.
+
 ### Tracing (OpenTelemetry)
 
 `make db-up` also starts a local Jaeger. To send traces to it, set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` in `.env`, restart the API, make a request, and open `http://localhost:16686` (service `dzo-backend`). Each request shows up as a trace with its SQL queries as child spans. Leave the variable unset to turn export off — tests and CI run that way.

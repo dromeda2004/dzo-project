@@ -7,9 +7,9 @@ order: a first name and the delivery address. No email, phone, or full name
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 from app.models import Address, DriverProfile, Order, OrderItem, User
 from app.models.enums import CancellationReason, OrderStatus
@@ -18,6 +18,30 @@ from app.models.enums import CancellationReason, OrderStatus
 def first_name(user: User) -> str:
     parts = user.full_name.split()
     return parts[0] if parts else ""
+
+
+# --- Actions (epic3.task7) -------------------------------------------------------
+
+MAX_PREP_TIME_MINUTES = 180
+
+
+class AcknowledgeRequest(BaseModel):
+    prep_time_estimate_minutes: int = Field(ge=1, le=MAX_PREP_TIME_MINUTES)
+
+
+class CancelRequest(BaseModel):
+    reason: CancellationReason
+    note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def _note_for_other(self) -> Self:
+        self.note = (self.note or "").strip() or None
+        if self.reason == CancellationReason.OTHER and self.note is None:
+            raise ValueError("A note is required when the reason is 'other'")
+        return self
+
+
+# --- Reads -----------------------------------------------------------------------
 
 
 class CustomerOut(BaseModel):

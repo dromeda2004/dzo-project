@@ -1,0 +1,338 @@
+"""Acknowledge and cancel (epic3.task7), and the shared kitchen-tablet login."""
+
+from datetime import UTC, datetime, timedelta
+
+import jwt
+import pytest
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.security import hash_password
+from app.models import Order, Restaurant
+from app.models.enums import OrderStatus, RestaurantStaffRole
+from tests.factories import (
+    add_staff,
+    auth,
+    create_order,
+    create_restaurant,
+    create_user,
+    staffed_restaurant,
+)
+
+S = OrderStatus
+settings = get_settings()
+
+
+def url(restaurant: Restaurant, order: Order, action: str) -> str:
+    return f"/restaurants/{restaurant.id}/orders/{order.id}/{action}"
+
+
+async def current_status(db: AsyncSession, order: Order) -> S:
+    await db.refresh(order)
+    return order.status
+
+
+# --- Acknowledge ---------------------------------------------------------------------
+
+
+async def test_acknowledge_opens_the_order_for_claim(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant)
+    before = datetime.now(UTC)
+
+    response = await client.post(
+        url(restaurant, order, "acknowledge"),
+        json={"prep_time_estimate_minutes": 20},
+        headers=auth(staff),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == order.id
+    assert body["status"] == "open_for_claim"
+    assert body["prep_time_estimate_minutes"] == 20
+    assert datetime.fromisoformat(body["acknowledged_at"]) >= before
+    assert await current_status(db_session, order) == S.OPEN_FOR_CLAIM
+
+
+async def test_acknowledging_twice_is_a_409(client: AsyncClient, db_session: AsyncSession) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant)
+    body = {"prep_time_estimate_minutes": 20}
+
+    first = await client.post(url(restaurant, order, "acknowledge"), json=body, headers=auth(staff))
+    second = await client.post(
+        url(restaurant, order, "acknowledge"), json=body, headers=auth(staff)
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "conflict"
+    assert "open_for_claim to acknowledged" in second.json()["error"]["message"]
+
+
+@pytest.mark.parametrize("start", [S.CLAIMED, S.DELIVERED])
+async def test_only_placed_orders_can_be_acknowledged(
+    client: AsyncClient, db_session: AsyncSession, start: S
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant, status=start)
+
+    response = await client.post(
+        url(restaurant, order, "acknowledge"),
+        json={"prep_time_estimate_minutes": 20},
+        headers=auth(staff),
+    )
+
+    assert response.status_code == 409
+    assert await current_status(db_session, order) == start
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"prep_time_estimate_minutes": 0},
+        {"prep_time_estimate_minutes": 181},
+        {"prep_time_estimate_minutes": "soon"},
+    ],
+)
+async def test_acknowledge_needs_a_sane_prep_time(
+    client: AsyncClient, db_session: AsyncSession, body: dict
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant)
+
+    response = await client.post(
+        url(restaurant, order, "acknowledge"), json=body, headers=auth(staff)
+    )
+
+    assert response.status_code == 422
+    assert await current_status(db_session, order) == S.PLACED
+
+
+async def test_acknowledge_accepts_the_bounds(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    for minutes in (1, 180):
+        order = await create_order(db_session, restaurant, customer_email=f"c{minutes}@example.com")
+        response = await client.post(
+            url(restaurant, order, "acknowledge"),
+            json={"prep_time_estimate_minutes": minutes},
+            headers=auth(staff),
+        )
+        assert response.status_code == 200
+
+
+# --- Cancel --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("start", [S.PLACED, S.ACKNOWLEDGED, S.OPEN_FOR_CLAIM])
+async def test_cancel_before_a_driver_claims(
+    client: AsyncClient, db_session: AsyncSession, start: S
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant, status=start)
+
+    response = await client.post(
+        url(restaurant, order, "cancel"),
+        json={"reason": "item_unavailable", "note": "  Out of fish  "},
+        headers=auth(staff),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "cancelled"
+    assert (body["cancellation_reason"], body["cancellation_note"]) == (
+        "item_unavailable",
+        "Out of fish",
+    )
+    assert body["cancelled_at"] is not None
+    assert await current_status(db_session, order) == S.CANCELLED
+
+
+@pytest.mark.parametrize("start", [S.CLAIMED, S.READY_TIME_SET, S.PICKED_UP, S.DELIVERED])
+async def test_cancel_after_a_driver_claims_is_a_409(
+    client: AsyncClient, db_session: AsyncSession, start: S
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant, status=start)
+
+    response = await client.post(
+        url(restaurant, order, "cancel"), json={"reason": "too_busy"}, headers=auth(staff)
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"
+    assert await current_status(db_session, order) == start
+
+
+async def test_a_cancelled_order_stays_cancelled(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant)
+    cancel = {"reason": "closing"}
+
+    assert (
+        await client.post(url(restaurant, order, "cancel"), json=cancel, headers=auth(staff))
+    ).status_code == 200
+    again = await client.post(url(restaurant, order, "cancel"), json=cancel, headers=auth(staff))
+    acknowledge = await client.post(
+        url(restaurant, order, "acknowledge"),
+        json={"prep_time_estimate_minutes": 10},
+        headers=auth(staff),
+    )
+
+    assert (again.status_code, acknowledge.status_code) == (409, 409)
+    # Gone from the default inbox, still there when asked for.
+    inbox = await client.get(f"/restaurants/{restaurant.id}/orders", headers=auth(staff))
+    assert inbox.json()["orders"] == []
+    cancelled = await client.get(
+        f"/restaurants/{restaurant.id}/orders", params={"status": "cancelled"}, headers=auth(staff)
+    )
+    assert [o["id"] for o in cancelled.json()["orders"]] == [order.id]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"reason": "bored"},
+        {"reason": "other"},
+        {"reason": "other", "note": "   "},
+        {"reason": "too_busy", "note": "x" * 501},
+    ],
+)
+async def test_cancel_needs_a_valid_reason(
+    client: AsyncClient, db_session: AsyncSession, body: dict
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant)
+
+    response = await client.post(url(restaurant, order, "cancel"), json=body, headers=auth(staff))
+
+    assert response.status_code == 422
+    assert await current_status(db_session, order) == S.PLACED
+
+
+async def test_other_with_a_note_is_accepted(client: AsyncClient, db_session: AsyncSession) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant)
+
+    response = await client.post(
+        url(restaurant, order, "cancel"),
+        json={"reason": "other", "note": "Power cut"},
+        headers=auth(staff),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["cancellation_note"] == "Power cut"
+
+
+# --- Who can act ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("role", list(RestaurantStaffRole))
+@pytest.mark.parametrize("action", ["acknowledge", "cancel"])
+async def test_every_staff_role_can_act(
+    client: AsyncClient, db_session: AsyncSession, role: RestaurantStaffRole, action: str
+) -> None:
+    restaurant, member = await staffed_restaurant(db_session, role)
+    order = await create_order(db_session, restaurant)
+    body = {"prep_time_estimate_minutes": 15} if action == "acknowledge" else {"reason": "too_busy"}
+
+    response = await client.post(url(restaurant, order, action), json=body, headers=auth(member))
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("action", ["acknowledge", "cancel"])
+async def test_outsiders_cannot_act(
+    client: AsyncClient, db_session: AsyncSession, action: str
+) -> None:
+    mine, staff = await staffed_restaurant(db_session, RestaurantStaffRole.OWNER, name="Mine")
+    theirs = await create_restaurant(db_session, "Theirs")
+    their_order = await create_order(db_session, theirs, customer_email="theirs@example.com")
+    body = {"prep_time_estimate_minutes": 15} if action == "acknowledge" else {"reason": "too_busy"}
+
+    # Their restaurant: not on its staff. Their order through my path: not found.
+    assert (
+        await client.post(url(theirs, their_order, action), json=body, headers=auth(staff))
+    ).status_code == 403
+    assert (
+        await client.post(url(mine, their_order, action), json=body, headers=auth(staff))
+    ).status_code == 404
+    # The customer who placed it can't act as the restaurant, and nobody anonymous can.
+    customer = await create_user(db_session, email="nosy@example.com")
+    assert (
+        await client.post(url(theirs, their_order, action), json=body, headers=auth(customer))
+    ).status_code == 403
+    assert (await client.post(url(theirs, their_order, action), json=body)).status_code == 401
+
+    assert await current_status(db_session, their_order) == S.PLACED
+
+
+# --- Shared kitchen tablet -----------------------------------------------------------
+
+
+async def _login(client: AsyncClient, email: str, **extra: object) -> dict:
+    response = await client.post(
+        "/auth/login", json={"email": email, "password": "correct horse", **extra}
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def _lifetime(token: str) -> timedelta:
+    claims = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+    return datetime.fromtimestamp(claims["exp"], UTC) - datetime.now(UTC)
+
+
+async def test_stay_signed_in_gives_a_30_day_login(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await create_user(db_session, email="kitchen@example.com")
+
+    normal = await _login(client, "kitchen@example.com")
+    tablet = await _login(client, "kitchen@example.com", stay_signed_in=True)
+
+    assert normal["expires_in"] == 24 * 60 * 60
+    assert tablet["expires_in"] == 30 * 24 * 60 * 60
+    assert timedelta(hours=23) < _lifetime(normal["access_token"]) <= timedelta(hours=24)
+    assert timedelta(days=29) < _lifetime(tablet["access_token"]) <= timedelta(days=30)
+
+
+async def test_removing_the_tablet_from_staff_cuts_access_immediately(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    restaurant, owner = await staffed_restaurant(db_session, RestaurantStaffRole.OWNER)
+    kitchen = await create_user(db_session, email="kitchen@example.com")
+    kitchen.password_hash = hash_password("correct horse")
+    await add_staff(db_session, kitchen, restaurant, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant)
+    token = (await _login(client, "kitchen@example.com", stay_signed_in=True))["access_token"]
+    tablet = {"Authorization": f"Bearer {token}"}
+    inbox = f"/restaurants/{restaurant.id}/orders"
+    acknowledge = url(restaurant, order, "acknowledge")
+
+    assert (await client.get(inbox, headers=tablet)).status_code == 200
+
+    removed = await client.delete(
+        f"/restaurants/{restaurant.id}/staff/{kitchen.id}", headers=auth(owner)
+    )
+    assert removed.status_code == 204
+
+    # Same unexpired 30-day token, refused on the very next request.
+    db_session.expire_all()
+    assert (await client.get(inbox, headers=tablet)).status_code == 403
+    response = await client.post(
+        acknowledge,
+        json={"prep_time_estimate_minutes": 10},
+        headers=tablet,
+    )
+    assert response.status_code == 403
