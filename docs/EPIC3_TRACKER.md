@@ -19,7 +19,7 @@
 | epic3.task5 — Order state machine (transition guard) | done | commit `e1cba81` |
 | epic3.task6 — Order inbox for merchants | done | commit `f1d6fa2` |
 | epic3.task7 — Acknowledge order with prep-time estimate | done | commit `c2cfe38` |
-| epic3.task8 — Ready-time signal | todo | — |
+| epic3.task8 — Ready-time signal | done | commit `261bdb8` |
 | epic3.task9 — Merchant analytics & reporting | blocked | needs real orders, i.e. Epic 4 |
 | epic3.task10 — Merchant-side customer service tools | blocked | needs real customers, i.e. Epic 4 |
 
@@ -359,20 +359,31 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
   "id": "epic3.task8",
   "behavior": "A restaurant sets the ready-time on a Claimed order, moving it to Ready-time set",
   "verification": "integration tests + manual walk-through on a seeded order with a seeded driver claim",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `261bdb8`; tests/test_order_actions.py, tests/test_seed_dev.py; mutation checks; manual walk-through on seeded restaurant 590, 2026-11-19 (recorded below)"
 }
 ```
 
 **Lifecycle states touched:** 4 Claimed → 5 Ready-time set. Per open questions 3, 4, and 6 (decided): Claimed orders only, set manually, notification delivery in Epic 6.
 
-**Files (expected):** `app/routers/merchant_orders.py`, `tests/test_merchant_orders.py`
+**Files:** `app/routers/merchant_orders.py`, `app/schemas/order.py` (`ReadyTimeRequest`), `tests/test_order_actions.py`, `scripts/seed_dev.py` and `tests/test_seed_dev.py` (seeded claimed order), `README.md`
+
+**Endpoint** (any staff member at the restaurant, and admins): `POST /restaurants/{id}/orders/{order_id}/ready-time` with exactly one of `{"ready_in_minutes": 0–180}` (0 = ready now) or `{"ready_at": "<ISO time with timezone>"}`. Claimed → Ready-time set; returns the order detail.
+
+**Decisions (2026-11-19):**
+- **Two ways to give the time.** `ready_in_minutes` suits a tablet ("ready now", "+10 min"), and the server computes the time from its own clock; `ready_at` is for a specific clock time in any timezone, stored in UTC.
+- **Bounds:** no later than 3 hours ahead. `ready_at` may be up to 1 minute in the past to allow for clock drift, and is then stored as now; anything earlier, or without a timezone, is a 422.
+- **Set once.** Setting it again is a 409 from the guard (Ready-time set → Ready-time set isn't a transition). Revising a ready-time would need a new action; not needed for MVP.
+- **Seed gets a claimed order.** Driver claiming is Epic 6, so `scripts/seed_dev.py` now walks one order to Claimed by the seeded driver, through the guard (so `acknowledged_at` and `claimed_at` are real), and tops it back up to 1 on each run.
+
 
 **Acceptance criteria:**
-- [ ] Accepts either "ready now" or a future time; rejects past times
-- [ ] Rejected with 409 unless the order is Claimed (open question 3, decided)
-- [ ] Driver notification is out of scope (Epic 6), but the stored `ready_time` is what Epic 6 will read
-- [ ] `make check` passes; manual walk-through recorded here
+- [x] Accepts either "ready now" or a future time; rejects past times
+- [x] Rejected with 409 unless the order is Claimed (open question 3, decided)
+- [x] Driver notification is out of scope (Epic 6), but the stored `ready_time` is what Epic 6 will read
+- [x] `make check` passes; manual walk-through recorded here
+
+**Manual walk-through (2026-11-19, seeded restaurant 590, as `staff@dzo.test`):** the seed created claimed order 951 (driver Dana). Placed order 51 was acknowledged with 25 minutes → `open_for_claim`; setting its ready-time before a claim → 409. Order 951 showed `claimed_at` and the driver; `ready_at` in the past → 422; `ready_in_minutes: 10` at 02:28:45Z → `ready_time_set`, `ready_time` 02:38:45Z; setting it again → 409; cancelling after the claim → 409. Together with task7's walk-through, this covers the epic success criterion: Placed → Acknowledged → Open for claim, and Claimed → Ready-time set, through the API with illegal transitions rejected.
 
 ---
 
@@ -417,9 +428,9 @@ Admins pass every owner check (epic3.task1), so an admin onboards a restaurant w
 
 ## Epic 3 done when
 
-- [ ] Restaurants can be onboarded and staff are authorized per restaurant (task1, task2)
-- [ ] A complete menu can be managed and read back, including categories, modifiers, and the 86 toggle (task3)
-- [ ] A seeded order can be walked through Placed → Acknowledged → Open for claim and Claimed → Ready-time set via the API, with illegal transitions rejected (task4–task8)
-- [ ] Open questions 1–3 and 7 (pickup) are answered and recorded in this file
-- [ ] If pickup is confirmed: a seeded pickup order can be walked through Placed → Acknowledged → Ready-time set → Picked up
+- [x] Restaurants can be onboarded and staff are authorized per restaurant (task1, task2)
+- [x] A complete menu can be managed and read back, including categories, modifiers, and the 86 toggle (task3)
+- [x] A seeded order can be walked through Placed → Acknowledged → Open for claim and Claimed → Ready-time set via the API, with illegal transitions rejected (task4–task8)
+- [x] Open questions 1–3 and 7 (pickup) are answered and recorded in this file (7: deferred, 2026-11-04)
+- [ ] *(N/A while pickup is deferred)* If pickup is confirmed: a seeded pickup order can be walked through Placed → Acknowledged → Ready-time set → Picked up
 - [ ] Epic 4 (DZO Food) can build customer ordering against the menu and order endpoints
