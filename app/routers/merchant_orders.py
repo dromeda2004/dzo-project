@@ -3,8 +3,11 @@ kitchen-tablet account) and admins can use all of them.
 
 - Inbox (epic3.task6): list the restaurant's orders and open one. Merchants poll
   the list for new orders (EPIC3_TRACKER.md open question 5).
-- Acknowledge and cancel (epic3.task7), both through the task5 lifecycle guard.
+- Acknowledge and cancel (epic3.task7), and the ready-time signal (epic3.task8),
+  all through the task5 lifecycle guard.
 """
+
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -21,6 +24,7 @@ from app.schemas.order import (
     OrderDetailOut,
     OrderListOut,
     OrderSummaryOut,
+    ReadyTimeRequest,
 )
 from app.services.order_lifecycle import transition
 
@@ -123,6 +127,25 @@ async def cancel_order(
         OrderStatus.CANCELLED,
         cancellation_reason=payload.reason,
         cancellation_note=payload.note,
+    )
+    await db.commit()
+    return OrderDetailOut.of(await _load_order(db, restaurant.id, order_id))
+
+
+@router.post("/{order_id}/ready-time", response_model=OrderDetailOut)
+async def set_ready_time(
+    order_id: int,
+    payload: ReadyTimeRequest,
+    restaurant: Restaurant = Depends(any_staff),
+    db: AsyncSession = Depends(get_db),
+) -> OrderDetailOut:
+    """Tell the claimed driver when to arrive: Claimed -> Ready-time set. Only once a
+    driver has claimed the order (open question 3); anything else is a 409. Staff set
+    it by hand (open question 4). Notifying the driver's phone is Epic 6, which reads
+    the stored ready_time (open question 6)."""
+    order = await _load_order(db, restaurant.id, order_id)
+    await transition(
+        db, order, OrderStatus.READY_TIME_SET, ready_time=payload.resolve(datetime.now(UTC))
     )
     await db.commit()
     return OrderDetailOut.of(await _load_order(db, restaurant.id, order_id))

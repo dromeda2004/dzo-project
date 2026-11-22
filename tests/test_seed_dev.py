@@ -13,7 +13,9 @@ from app.models import (
     User,
 )
 from app.models.enums import OrderStatus
+from app.services.order_lifecycle import transition
 from scripts.seed_dev import (
+    SEED_CLAIMED_ORDERS,
     SEED_PLACED_ORDERS,
     NotLocalDatabaseError,
     assert_local_database,
@@ -83,3 +85,26 @@ async def test_seed_creates_placed_orders_and_tops_them_up(db_session: AsyncSess
     again = await seed(db_session)
     assert again.created == {"orders": 1}
     assert len((await db_session.scalars(placed())).all()) == SEED_PLACED_ORDERS
+
+
+async def test_seed_walks_one_order_to_claimed(db_session: AsyncSession) -> None:
+    summary = await seed(db_session)
+
+    claimed = (
+        await db_session.scalars(
+            select(Order).where(
+                Order.restaurant_id == summary.restaurant_id, Order.status == OrderStatus.CLAIMED
+            )
+        )
+    ).all()
+    assert len(claimed) == SEED_CLAIMED_ORDERS
+    [order] = claimed
+    # Walked there through the guard, so every earlier timestamp is set.
+    assert order.driver_id is not None
+    assert order.acknowledged_at is not None and order.claimed_at is not None
+    assert order.prep_time_estimate_minutes == 15
+
+    # Once the restaurant sets its ready-time, a re-run claims a fresh one.
+    await transition(db_session, order, OrderStatus.READY_TIME_SET, ready_time=order.claimed_at)
+    again = await seed(db_session)
+    assert again.created == {"orders": 1}

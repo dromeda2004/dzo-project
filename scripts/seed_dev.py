@@ -2,16 +2,18 @@
 
 Seeds an admin, a pilot restaurant with an owner, a manager and a staff member,
 a menu (categories, items, modifiers, one 86'd item), a customer with a delivery
-address, a driver, and orders in the Placed state. Orders can't be created through
-the API until Epic 4, so this is how task6–task8 get something to walk through.
+address, a driver, orders in the Placed state, and one order the seeded driver has
+claimed. Orders can't be created through the API until Epic 4, nor claimed until
+Epic 6, so this is how task6–task8 get something to walk through.
 
     make seed            # or: python -m scripts.seed_dev
 
 Safe to re-run: every row is looked up by a natural key (email, restaurant name,
 category/item name) before being created, so a second run adds nothing. The one
 exception is orders: each run tops the restaurant up to SEED_PLACED_ORDERS orders
-in the Placed state, so after walking some through the lifecycle, re-running gives
-you fresh ones to work with.
+in the Placed state and SEED_CLAIMED_ORDERS in Claimed, so after walking some
+through the lifecycle, re-running gives you fresh ones to work with. The claimed
+order is walked there through the lifecycle guard, so its timestamps are real.
 
 Refuses to run unless DATABASE_URL points at localhost. Every seeded account uses
 the dev-only password below; never point this at a shared database.
@@ -43,10 +45,12 @@ from app.models import (
     User,
 )
 from app.models.enums import OrderStatus, RestaurantStaffRole
+from app.services.order_lifecycle import transition
 
 # Dev-only. Documented in README.md; shared by every seeded account.
 SEED_PASSWORD = "dzo-dev-only"
 SEED_PLACED_ORDERS = 3
+SEED_CLAIMED_ORDERS = 1
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 RESTAURANT_NAME = "DZO Pilot Kitchen"
@@ -205,12 +209,16 @@ async def _seed_orders(
     restaurant: Restaurant,
     customer: User,
     address: Address,
+    driver: DriverProfile,
 ) -> None:
-    placed = await session.scalar(
-        select(func.count(Order.id)).where(
-            Order.restaurant_id == restaurant.id, Order.status == OrderStatus.PLACED
+    async def count(status: OrderStatus) -> int:
+        n = await session.scalar(
+            select(func.count(Order.id)).where(
+                Order.restaurant_id == restaurant.id, Order.status == status
+            )
         )
-    )
+        return n or 0
+
     burger = await _menu_item(session, restaurant, "Classic Burger")
     fries = await _menu_item(session, restaurant, "Fries")
     lemonade = await _menu_item(session, restaurant, "Lemonade")
@@ -248,8 +256,7 @@ async def _seed_orders(
         ],
     ]
 
-    for i in range(max(0, SEED_PLACED_ORDERS - (placed or 0))):
-        basket = baskets[i % len(baskets)]
+    async def place(basket: list[tuple[MenuItem, int, Decimal, dict[str, Any] | None]]) -> Order:
         order = Order(
             customer_id=customer.id,
             restaurant_id=restaurant.id,
@@ -270,6 +277,18 @@ async def _seed_orders(
         session.add(order)
         await session.flush()
         summary.count("orders")
+        return order
+
+    for i in range(max(0, SEED_PLACED_ORDERS - await count(OrderStatus.PLACED))):
+        await place(baskets[i % len(baskets)])
+
+    # Driver claiming is Epic 6, so walk an order to Claimed here for task8's
+    # ready-time signal, through the guard rather than setting the status directly.
+    for _ in range(max(0, SEED_CLAIMED_ORDERS - await count(OrderStatus.CLAIMED))):
+        order = await place(baskets[0])
+        await transition(session, order, OrderStatus.ACKNOWLEDGED, prep_time_estimate_minutes=15)
+        await transition(session, order, OrderStatus.OPEN_FOR_CLAIM)
+        await transition(session, order, OrderStatus.CLAIMED, driver_id=driver.id)
 
 
 async def seed(session: AsyncSession) -> SeedSummary:
@@ -332,17 +351,16 @@ async def seed(session: AsyncSession) -> SeedSummary:
     driver = await _get_or_create_user(session, summary, password_hash, DRIVER_EMAIL, "Dana Driver")
     profile = await session.scalar(select(DriverProfile).where(DriverProfile.user_id == driver.id))
     if profile is None:
-        session.add(
-            DriverProfile(
-                user_id=driver.id,
-                vehicle_description="Silver Honda Civic",
-                background_check_status="approved",
-            )
+        profile = DriverProfile(
+            user_id=driver.id,
+            vehicle_description="Silver Honda Civic",
+            background_check_status="approved",
         )
+        session.add(profile)
         await session.flush()
         summary.count("driver_profiles")
 
-    await _seed_orders(session, summary, restaurant, customer, address)
+    await _seed_orders(session, summary, restaurant, customer, address, profile)
     return summary
 
 

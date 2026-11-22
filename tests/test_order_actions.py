@@ -1,6 +1,6 @@
 """Acknowledge and cancel (epic3.task7), and the shared kitchen-tablet login."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import jwt
 import pytest
@@ -11,9 +11,11 @@ from app.core.config import get_settings
 from app.core.security import hash_password
 from app.models import Order, Restaurant
 from app.models.enums import OrderStatus, RestaurantStaffRole
+from app.services.order_lifecycle import transition
 from tests.factories import (
     add_staff,
     auth,
+    create_driver,
     create_order,
     create_restaurant,
     create_user,
@@ -336,3 +338,174 @@ async def test_removing_the_tablet_from_staff_cuts_access_immediately(
         headers=tablet,
     )
     assert response.status_code == 403
+
+
+# --- Ready-time signal (epic3.task8) ----------------------------------------------
+
+
+async def claimed_order(db: AsyncSession, restaurant: Restaurant) -> Order:
+    order = await create_order(db, restaurant, status=S.OPEN_FOR_CLAIM)
+    driver = await create_driver(db)
+    await transition(db, order, S.CLAIMED, driver_id=driver.id)
+    return order
+
+
+def _at(body: dict) -> datetime:
+    return datetime.fromisoformat(body["ready_time"])
+
+
+@pytest.mark.parametrize("minutes", [0, 10, 180])
+async def test_ready_in_minutes(
+    client: AsyncClient, db_session: AsyncSession, minutes: int
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await claimed_order(db_session, restaurant)
+    before = datetime.now(UTC)
+
+    response = await client.post(
+        url(restaurant, order, "ready-time"),
+        json={"ready_in_minutes": minutes},
+        headers=auth(staff),
+    )
+
+    after = datetime.now(UTC)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ready_time_set"
+    assert body["driver"] is not None
+    expected = timedelta(minutes=minutes)
+    assert before + expected <= _at(body) <= after + expected
+    assert await current_status(db_session, order) == S.READY_TIME_SET
+
+
+async def test_ready_at_a_specific_time(client: AsyncClient, db_session: AsyncSession) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await claimed_order(db_session, restaurant)
+    # Given in the restaurant's own offset; stored and returned as the same instant.
+    ready = (datetime.now(UTC) + timedelta(minutes=25)).replace(microsecond=0)
+    local = ready.astimezone(timezone(timedelta(hours=-8)))
+
+    response = await client.post(
+        url(restaurant, order, "ready-time"),
+        json={"ready_at": local.isoformat()},
+        headers=auth(staff),
+    )
+
+    assert response.status_code == 200
+    assert _at(response.json()) == ready
+
+
+async def test_ready_at_within_clock_skew_is_stored_as_now(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await claimed_order(db_session, restaurant)
+    before = datetime.now(UTC)
+    slightly_behind = before - timedelta(seconds=30)
+
+    response = await client.post(
+        url(restaurant, order, "ready-time"),
+        json={"ready_at": slightly_behind.isoformat()},
+        headers=auth(staff),
+    )
+
+    assert response.status_code == 200
+    assert _at(response.json()) >= before
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"ready_in_minutes": 10, "ready_at": "2030-01-01T00:00:00Z"},
+        {"ready_in_minutes": -1},
+        {"ready_in_minutes": 181},
+        {"ready_at": "2020-01-01T00:00:00Z"},  # past
+        {"ready_at": "PAST_5_MIN"},  # past, beyond the clock-skew allowance
+        {"ready_at": "FUTURE_4_HOURS"},  # too far ahead
+        {"ready_at": "2030-01-01T18:00:00"},  # no timezone
+        {"ready_at": "soon"},
+    ],
+)
+async def test_ready_time_rejects_bad_times(
+    client: AsyncClient, db_session: AsyncSession, body: dict
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await claimed_order(db_session, restaurant)
+    now = datetime.now(UTC)
+    relative = {
+        "PAST_5_MIN": now - timedelta(minutes=5),
+        "FUTURE_4_HOURS": now + timedelta(hours=4),
+    }
+    if body.get("ready_at") in relative:
+        body = {"ready_at": relative[body["ready_at"]].isoformat()}
+
+    response = await client.post(
+        url(restaurant, order, "ready-time"), json=body, headers=auth(staff)
+    )
+
+    assert response.status_code == 422
+    assert await current_status(db_session, order) == S.CLAIMED
+
+
+@pytest.mark.parametrize(
+    "start", [S.PLACED, S.ACKNOWLEDGED, S.OPEN_FOR_CLAIM, S.READY_TIME_SET, S.DELIVERED]
+)
+async def test_ready_time_only_on_a_claimed_order(
+    client: AsyncClient, db_session: AsyncSession, start: S
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await create_order(db_session, restaurant, status=start)
+
+    response = await client.post(
+        url(restaurant, order, "ready-time"), json={"ready_in_minutes": 5}, headers=auth(staff)
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "conflict"
+    assert await current_status(db_session, order) == start
+
+
+async def test_ready_time_cannot_be_set_twice(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    restaurant, staff = await staffed_restaurant(db_session, RestaurantStaffRole.STAFF)
+    order = await claimed_order(db_session, restaurant)
+    ready = url(restaurant, order, "ready-time")
+
+    first = await client.post(ready, json={"ready_in_minutes": 10}, headers=auth(staff))
+    second = await client.post(ready, json={"ready_in_minutes": 0}, headers=auth(staff))
+
+    assert (first.status_code, second.status_code) == (200, 409)
+
+
+@pytest.mark.parametrize("role", list(RestaurantStaffRole))
+async def test_every_staff_role_can_set_the_ready_time(
+    client: AsyncClient, db_session: AsyncSession, role: RestaurantStaffRole
+) -> None:
+    restaurant, member = await staffed_restaurant(db_session, role)
+    order = await claimed_order(db_session, restaurant)
+
+    response = await client.post(
+        url(restaurant, order, "ready-time"), json={"ready_in_minutes": 5}, headers=auth(member)
+    )
+
+    assert response.status_code == 200
+
+
+async def test_outsiders_cannot_set_the_ready_time(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    mine, staff = await staffed_restaurant(db_session, RestaurantStaffRole.OWNER, name="Mine")
+    theirs = await create_restaurant(db_session, "Theirs")
+    their_order = await claimed_order(db_session, theirs)
+    body = {"ready_in_minutes": 5}
+
+    assert (
+        await client.post(url(theirs, their_order, "ready-time"), json=body, headers=auth(staff))
+    ).status_code == 403
+    assert (
+        await client.post(url(mine, their_order, "ready-time"), json=body, headers=auth(staff))
+    ).status_code == 404
+    assert (await client.post(url(theirs, their_order, "ready-time"), json=body)).status_code == 401
+    assert await current_status(db_session, their_order) == S.CLAIMED

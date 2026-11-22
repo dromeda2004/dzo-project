@@ -5,7 +5,7 @@ order: a first name and the delivery address. No email, phone, or full name
 (EPIC3_TRACKER.md epic3.task6).
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Self
 
@@ -39,6 +39,43 @@ class CancelRequest(BaseModel):
         if self.reason == CancellationReason.OTHER and self.note is None:
             raise ValueError("A note is required when the reason is 'other'")
         return self
+
+
+MAX_READY_AHEAD_MINUTES = 180
+# Allowed drift between the client's clock and the server's for "ready_at".
+READY_AT_CLOCK_SKEW = timedelta(minutes=1)
+
+
+class ReadyTimeRequest(BaseModel):
+    """When the food will be ready (epic3.task8). Exactly one of:
+    - `ready_in_minutes`: 0 means ready now; the server computes the time.
+    - `ready_at`: a specific time, with a timezone.
+    Neither may be in the past or more than 3 hours ahead."""
+
+    ready_in_minutes: int | None = Field(default=None, ge=0, le=MAX_READY_AHEAD_MINUTES)
+    ready_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> Self:
+        if (self.ready_in_minutes is None) == (self.ready_at is None):
+            raise ValueError("Give exactly one of ready_in_minutes or ready_at")
+        if self.ready_at is not None:
+            if self.ready_at.tzinfo is None:
+                raise ValueError("ready_at must include a timezone, e.g. 2026-11-19T18:30:00Z")
+            now = datetime.now(UTC)
+            if self.ready_at < now - READY_AT_CLOCK_SKEW:
+                raise ValueError("ready_at is in the past")
+            if self.ready_at > now + timedelta(minutes=MAX_READY_AHEAD_MINUTES):
+                raise ValueError(f"ready_at is more than {MAX_READY_AHEAD_MINUTES} minutes ahead")
+        return self
+
+    def resolve(self, now: datetime) -> datetime:
+        """The ready time to store. A ready_at within the clock-skew allowance in the
+        past is stored as now, so it never reads as earlier than the signal."""
+        if self.ready_at is not None:
+            return max(self.ready_at.astimezone(UTC), now)
+        assert self.ready_in_minutes is not None
+        return now + timedelta(minutes=self.ready_in_minutes)
 
 
 # --- Reads -----------------------------------------------------------------------
