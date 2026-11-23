@@ -4,12 +4,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import AfterValidator, BaseModel, Field
 
 from app.models.enums import RestaurantStaffRole
-from app.schemas.auth import NewPassword
+from app.schemas.auth import Email, NewPassword
 from app.schemas.base import ORMBase, PatchModel
-
-# Deliberately loose: catches typos, not every invalid address. Real verification
-# needs an email provider, which doesn't exist yet (see EPIC3_TRACKER.md epic3.task2).
-EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 
 def _validate_timezone(value: str) -> str:
@@ -23,8 +19,6 @@ def _validate_timezone(value: str) -> str:
 
 
 Timezone = Annotated[str, Field(max_length=50), AfterValidator(_validate_timezone)]
-# Lowercased so adding "Owner@Example.com" finds the existing owner@example.com account.
-Email = Annotated[str, Field(max_length=255, pattern=EMAIL_PATTERN), AfterValidator(str.lower)]
 
 
 class RestaurantCreate(BaseModel):
