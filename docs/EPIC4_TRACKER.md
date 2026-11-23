@@ -12,7 +12,7 @@
 
 | Task | Status | Evidence |
 |---|---|---|
-| epic4.task1 — Customer registration | todo | |
+| epic4.task1 — Customer registration | done | commit `12993a2` |
 | epic4.task2 — Saved delivery addresses | todo | |
 | epic4.task3 — Restaurant availability (hours and pause) | todo | |
 | epic4.task4 — Restaurant discovery and public menu | todo | |
@@ -62,16 +62,28 @@ Gaps found while scoping this epic, plus items carried over from the roadmap. No
   "id": "epic4.task1",
   "behavior": "Anyone can create a customer account with email, password and name, then log in with it",
   "verification": "integration tests (success, duplicate email in any case, weak password, the new user has no staff or admin rights); manual: register and log in",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `12993a2`; tests/test_register.py; manual walk-through 2026-11-22"
 }
 ```
 
-**Notes:**
-- `POST /auth/register` reuses the password rules from `POST /auth/password` and the case-insensitive `lower(email)` uniqueness from epic3.task3. A duplicate email returns 409 in the standard envelope.
-- It returns a token, as login does, so the app signs the customer straight in.
-- No email verification: there is no email provider yet (same reason as epic3.task2). Tracked under task10.
-- Registration is unauthenticated, so it needs rate limiting before public launch. Record that as an Epic 8 item rather than building it here.
+**Endpoint:** `POST /auth/register` with `email`, `password`, `full_name`. Returns 201 and the same token body as login (24-hour token), so the app signs the customer straight in.
+
+**Files:** `app/routers/auth.py`, `app/schemas/auth.py` (`RegisterRequest`; the `Email` type moved here from `app/schemas/restaurant.py` so registration and staff onboarding share it), `app/schemas/restaurant.py`, `tests/test_register.py`
+
+**Acceptance criteria:**
+- [x] A new account is created and signed in; the email is stored lowercased and the name trimmed; the password is hashed — `test_register_creates_customer_and_signs_in`, `test_registered_customer_can_log_in`
+- [x] Duplicate email in any case returns 409 in the standard envelope, including a concurrent-insert race (`IntegrityError` → 409, as in epic3.task2) — `test_duplicate_email_rejected_in_any_case`
+- [x] Same password rules as `POST /auth/password`; invalid email or blank name rejected — `test_weak_password_rejected`, `test_invalid_email_and_blank_name_rejected`
+- [x] The new user has no staff or admin rights, and the body can't grant them — `test_registered_customer_has_no_staff_rights`, `test_cannot_register_as_admin`
+- [x] `make check` equivalent passes — ruff, black, mypy clean; 260 tests pass (253 existing + 7 new)
+- [x] Manual walk-through (2026-11-22, local server): registered `Walk@Through.test` with a padded name → 201; `/auth/me` showed `walk@through.test`, the trimmed name, `is_admin: false`; registering again → 409; login with different capitalization → 200; the seeded restaurant's inbox → 403. Walk-through user deleted afterwards.
+
+**Deviations & open items:**
+- **No phone number yet.** Open question 5 is still open, so registration takes email, password and name only. A phone field can be added without breaking clients.
+- **No email verification** (no email provider; task10) and **no rate limiting** on this unauthenticated endpoint. Rate limiting is an Epic 8 item before public launch.
+- **Registration reveals whether an email has an account** (409). Every sign-up form does this to some degree; a generic response only helps once email verification exists. Revisit with task10.
+- **Mutation check:** dropping the lowercasing on `Email` makes `test_register_creates_customer_and_signs_in` fail.
 
 ---
 
