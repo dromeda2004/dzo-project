@@ -13,7 +13,7 @@
 | Task | Status | Evidence |
 |---|---|---|
 | epic4.task1 — Customer registration | done | commit `12993a2` |
-| epic4.task2 — Saved delivery addresses | todo | |
+| epic4.task2 — Saved delivery addresses | done | commit `f16bfdc` |
 | epic4.task3 — Restaurant availability (hours and pause) | todo | |
 | epic4.task4 — Restaurant discovery and public menu | todo | |
 | epic4.task5 — Server-side pricing (quote) | todo | |
@@ -94,15 +94,40 @@ Gaps found while scoping this epic, plus items carried over from the roadmap. No
   "id": "epic4.task2",
   "behavior": "A customer can add, list, update and delete their own delivery addresses, including delivery instructions",
   "verification": "integration tests per endpoint; another customer's address ids return 404",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `f16bfdc`; tests/test_addresses.py; migration round-trip and manual walk-through 2026-11-23"
 }
 ```
 
-**Notes:**
-- Endpoints under `/me/addresses`. The `addresses` table already exists (epic1.task2).
-- Orders reference addresses, so deleting one that's been used would break order history and the restaurant's view of past orders. **Proposed:** archive used addresses (hidden from the list), hard-delete unused ones. This mirrors menu items (epic3.task3).
-- Latitude and longitude stay empty until geocoding arrives (open question 4).
+**Endpoints** (any logged-in user, their own addresses only):
+
+| Endpoint | Does |
+|---|---|
+| `GET /me/addresses` | List saved addresses, oldest first |
+| `POST /me/addresses` | Add one (201) |
+| `GET /me/addresses/{id}` | Read one |
+| `PATCH /me/addresses/{id}` | Edit; returns the address, which has a new id if an order used the old one |
+| `DELETE /me/addresses/{id}` | Delete (204); archives it instead if an order used it |
+
+**Decisions (2026-11-23):**
+- **Used addresses are never changed.** `addresses` gets an `is_archived` flag (migration `7880f8584eb7`). Deleting an address an order used archives it. **Editing one archives it and saves the edited copy as a new address with a new id** — the tracker only covered deletes, but editing in place would change where past and active orders say they're going, including what the restaurant sees. The app should use the id in the PATCH response. Archived addresses are 404 to every endpoint here.
+- **At most 20 saved addresses** per customer (409 beyond that), so one account can't fill the table.
+- Text is trimmed; blank `line2` or `delivery_instructions` becomes null; `line2` and `delivery_instructions` can be cleared with null, the rest can't.
+- Changing any location field clears `latitude`/`longitude`, since they belonged to the old location. Changing only the instructions keeps them.
+
+**Files:** `app/models/address.py`, `alembic/versions/7880f8584eb7_address_archiving.py`, `app/schemas/address.py`, `app/routers/addresses.py`, `app/main.py`, `tests/test_addresses.py`
+
+**Acceptance criteria:**
+- [x] Add, list, read, edit and delete own addresses — `test_add_list_get_update_delete`, `test_list_is_oldest_first_and_only_mine`
+- [x] Another customer's address ids return 404 for read, edit and delete, and are left unchanged — `test_other_customers_address_is_not_found`
+- [x] Addresses used by an order are archived, not deleted or edited — `test_deleting_a_used_address_archives_it`, `test_editing_a_used_address_keeps_the_orders_copy`
+- [x] Validation, limit and login — `test_validation`, `test_address_limit`, `test_requires_login`, `test_location_edit_clears_coordinates`
+- [x] `make check` equivalent passes — ruff, black, mypy clean; 269 tests pass (260 existing + 9 new); `alembic downgrade -1` → `upgrade head` round-trip and `alembic check` clean
+- [x] Manual walk-through (2026-11-23, local server): registered a customer, added an address with padded text and a blank `line2` (trimmed, null), added instructions (same id, unused), listed it, a second customer got 404 on it, deleted it (204, gone from the list and the table). Walk-through rows deleted afterwards.
+
+**Deviations & open items:**
+- **The edit-makes-a-new-id rule is visible to clients.** An alternative is snapshotting the address onto the order at checkout (task6), which would let edits happen in place. Revisit then; the archive flag stays useful either way.
+- **Mutation check:** treating every address as unused on edit makes `test_editing_a_used_address_keeps_the_orders_copy` fail.
 
 ---
 
