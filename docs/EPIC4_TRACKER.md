@@ -14,7 +14,7 @@
 |---|---|---|
 | epic4.task1 — Customer registration | done | commit `12993a2` |
 | epic4.task2 — Saved delivery addresses | done | commit `f16bfdc` |
-| epic4.task3 — Restaurant availability (hours and pause) | todo | |
+| epic4.task3 — Restaurant availability (hours and pause) | done | commit `20cccf9` |
 | epic4.task4 — Restaurant discovery and public menu | todo | |
 | epic4.task5 — Server-side pricing (quote) | todo | |
 | epic4.task6 — Place an order (checkout) | todo | |
@@ -42,6 +42,7 @@ Gaps found while scoping this epic, plus items carried over from the roadmap. No
    - **Needs a decision:** the actual fee amounts, and whether the pilot charges tax through DZO.
 3. **When is a restaurant open?** Restaurants have no hours yet (deferred from epic3.task2).
    - **Proposed:** weekly opening hours in the restaurant's own timezone, plus a staff-controlled "pause new orders" toggle for busy nights. Orders are refused while closed or paused.
+   - **Decision (2026-11-24): as proposed**, with more than one window per day allowed (e.g. lunch and dinner). Built in task3.
 4. **Which addresses can a restaurant deliver to?** Nothing checks distance today, and addresses have no coordinates filled in.
    - **Proposed for the pilot:** no delivery-area check (Charlie's own restaurants, a controlled market). Geocoding and a radius check come with Epic 6, which needs coordinates anyway.
 5. **Does the customer give a phone number?** The driver may need to reach the customer at the door.
@@ -138,17 +139,45 @@ Gaps found while scoping this epic, plus items carried over from the roadmap. No
   "id": "epic4.task3",
   "behavior": "A restaurant has weekly opening hours and a pause toggle; the API can tell whether it is accepting orders right now",
   "verification": "unit tests for the open/closed calculation, including overnight hours and DST changes in the restaurant's timezone; integration tests for the merchant endpoints",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `20cccf9`; tests/test_availability.py, tests/test_seed_dev.py; migration round-trip and manual walk-through 2026-11-24"
 }
 ```
 
-**Depends on:** open question 3.
+This is merchant-side (DZO Biz) work, but it lives here because Epic 4 is the first thing that needs it.
 
-**Notes:**
-- This is merchant-side (DZO Biz) work, but it lives here because Epic 4 is the first thing that needs it.
-- Managers and owners edit hours. Any staff member, including the kitchen tablet, can pause and resume, just like the 86 toggle.
-- Hours that run past midnight (e.g. 17:00–01:00) and DST changes are the two places this usually goes wrong, so both need tests.
+**Endpoints:**
+
+| Endpoint | Who |
+|---|---|
+| `GET /restaurants/{id}/availability` (hours, pause time, `is_open_now`, `accepting_orders`) | staff and up |
+| `PUT /restaurants/{id}/hours` (replaces the whole weekly schedule) | manager and up |
+| `PUT /restaurants/{id}/pause` with `{"paused": true}` or `false` | staff and up, including the kitchen tablet |
+
+**Decisions (2026-11-24):**
+- **Windows, not one range per day.** A `restaurant_hours` row is one window (day, `opens_at`, `closes_at`) in the restaurant's local time, and a day can have several. A `closes_at` at or before `opens_at` runs past midnight and belongs to the day it opens (Friday 17:00–01:00); equal times mean 24 hours. Overlapping windows are rejected (422); touching ones (14:00 close, 14:00 open) are fine. At most 28 windows.
+- **Days are names in the API** (`"monday"`) and numbers in the database (Monday = 0, Python's `weekday()`). Times are whole minutes.
+- **Wall-clock time.** "9:00–17:00" means 9 to 5 local on both sides of a DST change. On the night the clocks go back, a window covering 01:00–02:00 covers both of them; on the night they go forward, the missing hour never happens.
+- **No hours means closed.** A new restaurant doesn't accept orders until a manager sets hours, so it can't receive orders by accident while it's being set up.
+- **Pause** is `restaurants.orders_paused_at` (when it was paused, or null). Pausing twice keeps the first time. It doesn't expire on its own; staff resume it.
+- **`accepting_orders` = active, not paused, and open now.** It's one function (`app/services/availability.is_accepting_orders`), so checkout (task6) and discovery (task4) give the same answer.
+- **Seed:** the pilot restaurant is open 24 hours every day, so walk-throughs work at any hour (README updated).
+
+**Files:** `app/models/restaurant.py` (`RestaurantHours`, `orders_paused_at`), `app/models/__init__.py`, `alembic/versions/f0b187048918_restaurant_hours.py`, `app/services/availability.py`, `app/schemas/availability.py`, `app/routers/availability.py`, `app/main.py`, `scripts/seed_dev.py`, `README.md`, `tests/test_availability.py`, `tests/test_seed_dev.py`
+
+**Acceptance criteria:**
+- [x] Open/closed calculation: a simple window, several windows a day, past midnight, Sunday-to-Monday wraparound, 24 hours, no hours, both DST changes, and the restaurant's own timezone — `test_simple_window`, `test_several_windows_in_one_day`, `test_window_past_midnight_belongs_to_the_day_it_opens`, `test_sunday_night_window_wraps_to_monday`, `test_equal_times_mean_24_hours`, `test_no_hours_means_closed`, `test_hours_are_local_time_across_daylight_saving`, `test_night_the_clocks_go_back`, `test_night_the_clocks_go_forward`, `test_timezone_is_the_restaurants`
+- [x] Overlaps detected, including across midnight and the end of the week — `test_find_overlap` (7 cases, both orders), `test_overlapping_or_invalid_hours_rejected`
+- [x] Accepting orders needs active, unpaused and open — `test_accepting_orders_needs_active_unpaused_and_open`
+- [x] Managers set hours (replacing the old schedule); staff can't; staff pause and resume; other restaurants' staff get 403 — `test_manager_sets_hours`, `test_staff_cannot_set_hours`, `test_staff_pause_and_resume`, `test_other_restaurants_staff_are_refused`, `test_new_restaurant_has_no_hours_and_is_closed`
+- [x] `make check` equivalent passes — ruff, black, mypy clean; 293 tests pass (269 existing + 24 new); migration round-trip and `alembic check` clean; a seed re-run added the 7 windows to restaurant 590
+- [x] Manual walk-through (2026-11-24, restaurant 590): as `staff@dzo.test`, availability showed 7 windows, open and accepting; setting hours → 403; pause → `accepting_orders: false` with the pause time; resume → accepting again. As `manager@dzo.test`, an overlapping Monday-night/Tuesday-morning schedule → 422 naming both windows; re-saving 24 hours every day → 200.
+
+**Deviations & open items:**
+- **Times come back as `"17:00:00"`** (pydantic's default), though `"17:00"` is accepted on the way in. Harmless; trim to `HH:MM` if the app team prefers.
+- **No holiday or one-off closures.** Pausing covers an unexpected closure; planned ones (e.g. Thanksgiving) can wait until a restaurant asks.
+- **Closing only stops new orders.** Orders already placed carry on through the lifecycle.
+- **Mutation checks:** treating every window as not wrapping past Sunday fails `test_sunday_night_window_wraps_to_monday` and the wraparound overlap case; dropping "equal times = 24 hours" fails four tests.
 
 ---
 
