@@ -5,7 +5,7 @@ from app.models.order import Order, OrderItem
 from app.models.payment import Payment, Payout
 from app.models.promotion import Promotion
 from app.models.rating import Rating
-from app.models.restaurant import Restaurant, RestaurantStaff
+from app.models.restaurant import Restaurant, RestaurantHours, RestaurantStaff
 from app.models.user import User
 
 __all__ = [
@@ -24,6 +24,7 @@ __all__ = [
     "Promotion",
     "Rating",
     "Restaurant",
+    "RestaurantHours",
     "RestaurantStaff",
     "User",
 ]
