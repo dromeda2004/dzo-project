@@ -15,7 +15,7 @@
 | epic4.task1 — Customer registration | done | commit `12993a2` |
 | epic4.task2 — Saved delivery addresses | done | commit `f16bfdc` |
 | epic4.task3 — Restaurant availability (hours and pause) | done | commit `20cccf9` |
-| epic4.task4 — Restaurant discovery and public menu | todo | |
+| epic4.task4 — Restaurant discovery and public menu | done | commit `8466935` |
 | epic4.task5 — Server-side pricing (quote) | todo | |
 | epic4.task6 — Place an order (checkout) | todo | |
 | epic4.task7 — Order history and tracking | todo | |
@@ -188,15 +188,40 @@ This is merchant-side (DZO Biz) work, but it lives here because Epic 4 is the fi
   "id": "epic4.task4",
   "behavior": "Customers can list active restaurants with whether each is open now, and read a restaurant's menu with 86'd items marked unavailable",
   "verification": "integration tests: inactive restaurants and archived items never appear; 86'd items are present but unavailable; no staff-only fields leak",
-  "state": "todo",
-  "evidence": null
+  "state": "done",
+  "evidence": "commit `8466935`; tests/test_food_browse.py; manual walk-through 2026-11-25"
 }
 ```
 
-**Notes:**
-- Read-only, under `/restaurants` for customers. Proposed: logged-in customers only for now, so the API isn't publicly scrapeable during the pilot. Opening this to logged-out browsing is a one-line change later.
-- Reuse the menu tree built in epic3.task3, but through a separate customer schema, so fields added for merchants later never leak to customers.
-- No search, distance sorting or photos upload yet. With a handful of pilot restaurants, a list is enough.
+**Endpoints** (any logged-in user):
+
+| Endpoint | Returns |
+|---|---|
+| `GET /food/restaurants` | Active restaurants: id, name, address, `is_open_now`, `accepting_orders`. Those taking orders first, then by name. |
+| `GET /food/restaurants/{id}/menu` | The restaurant (with timezone, hours, `is_open_now`, `accepting_orders`) and its menu: categories → items → modifiers → options, then uncategorized items |
+
+**Decisions (2026-11-25):**
+- **Under `/food/...`, not `/restaurants`** as first planned: `GET /restaurants/{id}` already belongs to staff (epic3.task2), and a separate prefix keeps customer and merchant routes from colliding. `app/main.py` had already sketched a `/food` prefix.
+- **One call for the restaurant page.** The menu response includes the restaurant's details and hours, so there's no separate restaurant-detail endpoint.
+- **Logged-in users only** during the pilot, so the API isn't publicly scrapeable. Opening it up means dropping one dependency on the router.
+- **Inactive restaurants are 404**, the same as unknown ones. A closed or paused restaurant's menu is still readable, with `accepting_orders: false`, so customers can look ahead.
+- **What customers see:** archived items never; 86'd items shown with `is_available: false`, so the menu doesn't reshuffle when something sells out; empty categories left out. Order follows the merchant's sort order, but `sort_order`, `category_id`, `is_archived` and the pause time are not exposed. The customer schemas (`app/schemas/food.py`) are separate from the merchant ones, so a field added for merchants later doesn't leak here.
+- **Shared loading:** the menu query moved to `app/services/menu.load_menu`, used by both the merchant and customer menus, and hours loading to `app/services/availability.load_windows`, which loads every listed restaurant's hours in one query.
+
+**Files:** `app/routers/food.py`, `app/schemas/food.py`, `app/services/menu.py`, `app/services/availability.py`, `app/routers/menu.py`, `app/routers/availability.py`, `app/main.py`, `tests/test_food_browse.py`
+
+**Acceptance criteria:**
+- [x] Only active restaurants are listed, those taking orders first; closed and paused ones show why — `test_list_shows_active_restaurants_accepting_first`
+- [x] Archived items never appear; 86'd items appear unavailable; empty categories left out; display order kept — `test_menu_for_customers`
+- [x] No merchant-only fields leak — `test_menu_hides_merchant_only_fields`, plus the exact-shape assertions in `test_menu_for_customers`
+- [x] Inactive and unknown restaurants are 404; a closed restaurant's menu is readable; login required — `test_inactive_or_unknown_restaurant_is_not_found`, `test_closed_restaurant_menu_is_still_readable`, `test_browsing_requires_login`
+- [x] `make check` equivalent passes — ruff, black, mypy clean; 299 tests pass (293 existing + 6 new), including the merchant menu tests after the shared-loader refactor
+- [x] Manual walk-through (2026-11-25, as `customer@dzo.test`): the list showed DZO Pilot Kitchen open and accepting; its menu showed Mains/Sides/Drinks with the 86'd Fish Tacos marked unavailable and the burger's 2 modifier groups; after `staff@dzo.test` paused orders, the customer menu showed `accepting_orders: false` (resumed afterwards); logged out → 401.
+
+**Deviations & open items:**
+- **No pagination on the restaurant list.** It returns every active restaurant, which is fine for a handful of pilot restaurants. Add the `API_CONVENTIONS.md` pagination (or search and distance sorting) before opening to outside restaurants (Epic 9).
+- **No search, distance sorting or photo upload** yet, as planned.
+- **Mutation checks:** dropping the active-restaurant filter fails `test_list_shows_active_restaurants_accepting_first`; showing empty categories fails `test_menu_for_customers`.
 
 ---
 
