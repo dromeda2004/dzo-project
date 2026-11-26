@@ -15,7 +15,7 @@ from app.core.database import get_db
 from app.models import Restaurant, RestaurantHours
 from app.models.enums import RestaurantStaffRole
 from app.schemas.availability import AvailabilityOut, HoursUpdate, HoursWindow, PauseUpdate
-from app.services.availability import Window, is_accepting_orders, is_open
+from app.services.availability import is_accepting_orders, is_open, load_windows
 
 router = APIRouter(prefix="/restaurants/{restaurant_id}", tags=["availability"])
 
@@ -24,12 +24,7 @@ any_staff = require_restaurant_role(RestaurantStaffRole.STAFF)
 
 
 async def _availability(db: AsyncSession, restaurant: Restaurant) -> AvailabilityOut:
-    rows = await db.scalars(
-        select(RestaurantHours)
-        .where(RestaurantHours.restaurant_id == restaurant.id)
-        .order_by(RestaurantHours.day_of_week, RestaurantHours.opens_at)
-    )
-    windows = [Window.of(r) for r in rows]
+    windows = (await load_windows(db, [restaurant.id]))[restaurant.id]
     now = datetime.now(UTC)
     return AvailabilityOut(
         timezone=restaurant.timezone,
