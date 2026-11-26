@@ -22,6 +22,7 @@ the dev-only password below; never point this at a shared database.
 import asyncio
 import sys
 from dataclasses import dataclass, field
+from datetime import time
 from decimal import Decimal
 from typing import Any
 
@@ -41,6 +42,7 @@ from app.models import (
     Order,
     OrderItem,
     Restaurant,
+    RestaurantHours,
     RestaurantStaff,
     User,
 )
@@ -312,6 +314,23 @@ async def seed(session: AsyncSession) -> SeedSummary:
         await session.flush()
         summary.count("restaurants")
     summary.restaurant_id = restaurant.id
+
+    # Open around the clock, so a local walk-through works at any hour (epic4.task3).
+    has_hours = await session.scalar(
+        select(RestaurantHours.id).where(RestaurantHours.restaurant_id == restaurant.id).limit(1)
+    )
+    if has_hours is None:
+        for day in range(7):
+            session.add(
+                RestaurantHours(
+                    restaurant_id=restaurant.id,
+                    day_of_week=day,
+                    opens_at=time(0),
+                    closes_at=time(0),
+                )
+            )
+            summary.count("restaurant_hours")
+        await session.flush()
 
     for email, full_name, role in STAFF:
         user = await _get_or_create_user(session, summary, password_hash, email, full_name)

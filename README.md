@@ -26,7 +26,7 @@ Visit `http://localhost:8000/health` — should return `{"status": "ok"}`. Inter
 make seed    # after make migrate
 ```
 
-Fills the local database with a pilot restaurant (**DZO Pilot Kitchen**) and its menu, plus a customer with a delivery address, a driver, 3 orders in the Placed state, and 1 order the driver has already claimed (for setting a ready-time). You need these for manual walk-throughs, because orders can't be created through the API until Epic 4, or claimed until Epic 6. It's safe to re-run: existing rows are left alone. On each run it adds just enough new orders to bring the Placed count back to 3 and the Claimed count back to 1, so you get fresh ones after walking some through the lifecycle. It refuses to run unless `DATABASE_URL` points at `localhost`.
+Fills the local database with a pilot restaurant (**DZO Pilot Kitchen**, open 24 hours every day so it accepts orders whenever you test) and its menu, plus a customer with a delivery address, a driver, 3 orders in the Placed state, and 1 order the driver has already claimed (for setting a ready-time). You need these for manual walk-throughs, because orders can't be created through the API until Epic 4, or claimed until Epic 6. It's safe to re-run: existing rows are left alone. On each run it adds just enough new orders to bring the Placed count back to 3 and the Claimed count back to 1, so you get fresh ones after walking some through the lifecycle. It refuses to run unless `DATABASE_URL` points at `localhost`.
 
 Every seeded account uses the password **`dzo-dev-only`**. It is for local development only and is not a secret.
 

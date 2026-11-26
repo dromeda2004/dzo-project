@@ -9,6 +9,7 @@ from app.models import (
     Order,
     OrderItem,
     Restaurant,
+    RestaurantHours,
     RestaurantStaff,
     User,
 )
@@ -22,7 +23,15 @@ from scripts.seed_dev import (
     seed,
 )
 
-COUNTED = [User, Restaurant, RestaurantStaff, MenuItem, MenuItemModifier, ModifierOption]
+COUNTED = [
+    User,
+    Restaurant,
+    RestaurantHours,
+    RestaurantStaff,
+    MenuItem,
+    MenuItemModifier,
+    ModifierOption,
+]
 
 
 @pytest.mark.parametrize(
