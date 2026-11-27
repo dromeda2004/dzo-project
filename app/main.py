@@ -9,6 +9,7 @@ from app.routers import (
     admin,
     auth,
     availability,
+    food,
     health,
     menu,
     merchant_orders,
@@ -35,7 +36,4 @@ app.include_router(menu.router)
 app.include_router(merchant_orders.router)
 app.include_router(addresses.router)
 app.include_router(availability.router)
-
-# Future domain routers get included here as they're built, e.g.:
-# from app.food.router import router as food_router
-# app.include_router(food_router, prefix="/food")
+app.include_router(food.router)

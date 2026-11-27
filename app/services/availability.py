@@ -7,10 +7,14 @@ Each window is turned into a span of minutes within the week (Monday 00:00 = 0).
 window that runs past midnight on Sunday wraps around to Monday morning.
 """
 
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Restaurant, RestaurantHours
 
@@ -72,3 +76,18 @@ def is_accepting_orders(restaurant: Restaurant, windows: Iterable[Window], now: 
         and restaurant.orders_paused_at is None
         and is_open(windows, restaurant.timezone, now)
     )
+
+
+async def load_windows(db: AsyncSession, restaurant_ids: Iterable[int]) -> dict[int, list[Window]]:
+    """Each restaurant's opening windows in display order, in one query. Restaurants
+    with no hours get an empty list."""
+    ids = list(restaurant_ids)
+    windows: defaultdict[int, list[Window]] = defaultdict(list)
+    rows = await db.scalars(
+        select(RestaurantHours)
+        .where(RestaurantHours.restaurant_id.in_(ids))
+        .order_by(RestaurantHours.day_of_week, RestaurantHours.opens_at)
+    )
+    for row in rows:
+        windows[row.restaurant_id].append(Window.of(row))
+    return {i: windows[i] for i in ids}

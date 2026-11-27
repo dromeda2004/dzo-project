@@ -1,5 +1,3 @@
-from collections import defaultdict
-
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,14 +24,13 @@ from app.schemas.menu import (
     OptionOut,
     OptionUpdate,
 )
+from app.services.menu import ITEM_TREE, load_menu
 
 router = APIRouter(prefix="/restaurants/{restaurant_id}/menu", tags=["menu"])
 
 # Owners and managers build the menu; any staff member can read it and 86 an item.
 editor = require_restaurant_role(RestaurantStaffRole.MANAGER)
 any_staff = require_restaurant_role(RestaurantStaffRole.STAFF)
-
-_ITEM_TREE = selectinload(MenuItem.modifiers).selectinload(MenuItemModifier.options)
 
 
 def _not_found(what: str) -> HTTPException:
@@ -76,7 +73,7 @@ async def _check_category(db: AsyncSession, restaurant_id: int, category_id: int
 async def _get_item(db: AsyncSession, restaurant_id: int, item_id: int) -> MenuItem:
     item = await db.scalar(
         select(MenuItem)
-        .options(_ITEM_TREE)
+        .options(ITEM_TREE)
         .where(
             MenuItem.id == item_id,
             MenuItem.restaurant_id == restaurant_id,
@@ -128,29 +125,17 @@ async def _get_option(db: AsyncSession, restaurant_id: int, option_id: int) -> M
 async def get_menu(
     restaurant: Restaurant = Depends(any_staff), db: AsyncSession = Depends(get_db)
 ) -> MenuOut:
-    categories = await db.scalars(
-        select(MenuCategory)
-        .where(MenuCategory.restaurant_id == restaurant.id)
-        .order_by(MenuCategory.sort_order, MenuCategory.id)
-    )
-    items = await db.scalars(
-        select(MenuItem)
-        .options(_ITEM_TREE)
-        .where(MenuItem.restaurant_id == restaurant.id, MenuItem.is_archived.is_(False))
-        .order_by(MenuItem.sort_order, MenuItem.id)
-        .execution_options(populate_existing=True)
-    )
-    by_category: defaultdict[int | None, list[MenuItemOut]] = defaultdict(list)
-    for item in items:
-        by_category[item.category_id].append(MenuItemOut.model_validate(item))
+    categories, by_category = await load_menu(db, restaurant.id)
+
+    def items(category_id: int | None) -> list[MenuItemOut]:
+        return [MenuItemOut.model_validate(i) for i in by_category[category_id]]
+
     return MenuOut(
         categories=[
-            CategoryWithItemsOut(
-                id=c.id, name=c.name, sort_order=c.sort_order, items=by_category[c.id]
-            )
+            CategoryWithItemsOut(id=c.id, name=c.name, sort_order=c.sort_order, items=items(c.id))
             for c in categories
         ],
-        uncategorized_items=by_category[None],
+        uncategorized_items=items(None),
     )
 
 
